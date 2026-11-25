@@ -44,6 +44,11 @@
 <style>
   html { -webkit-text-size-adjust: 100%; }
 
+  /* Tailwind's display utilities beat the browser's default [hidden] rule, so an
+     element with both `hidden` and `flex` stays visible. This makes the attribute
+     mean what it says. The empty strip relies on it while the continue card loads. */
+  [hidden] { display: none !important; }
+
   /* Sidebar: idle is quiet, hover/focus turns coral, active page stays coral. */
   .nav-item {
     color: #68696E;
@@ -341,6 +346,39 @@
               The shelf is full, the history is empty. Start anywhere.
             </p>
           </div>
+
+          <!-- Last book opened. Filled by JS from GET /api/progress; the empty
+               state below stays as the fallback when nothing has been read.
+               Both live in one slot so the layout does not jump. -->
+          <article id="continue-strip" hidden
+                   class="bg-lightCream/80 border border-border/60 rounded-2xl px-4 py-3 flex flex-wrap items-center gap-x-3.5 gap-y-2">
+            <div class="w-9 h-9 rounded-xl bg-[#EAE6DB] flex items-center justify-center flex-shrink-0" aria-hidden="true">
+              <svg class="w-4 h-4 text-charcoal/70" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 6.5v12"></path>
+                <path d="M12 6.5C10 5.5 8.5 5 7 5H3.5v12.5H7c1.5 0 3 .5 5 1.5"></path>
+                <path d="M12 6.5C14 5.5 15.5 5 17 5h3.5v12.5H17c-1.5 0-3 .5-5 1.5"></path>
+              </svg>
+            </div>
+
+            <div class="min-w-0 flex-1">
+              <p class="text-[10px] font-medium uppercase tracking-wider text-secondary">Picking up where you left off</p>
+              <p class="font-serif text-sm font-bold leading-tight truncate">
+                <a id="continue-title" href="#shelf" class="hover:text-coralText transition-colors">-</a>
+              </p>
+              <div class="flex items-center gap-2 mt-1.5 max-w-[15rem]">
+                <div class="h-1 flex-1 rounded-full bg-[#E4DFD5] overflow-hidden"
+                     role="progressbar" aria-label="Reading progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="continue-bar-wrap">
+                  <div id="continue-bar" class="h-full w-0 rounded-full bg-coral transition-all duration-300"></div>
+                </div>
+                <span id="continue-percent" class="text-[10.5px] font-semibold tabular-nums text-coralText flex-shrink-0">0%</span>
+              </div>
+            </div>
+
+            <a id="continue-btn" href="#shelf"
+               class="hover-nav inline-flex items-center justify-center min-h-[44px] px-4 ml-auto rounded-full border border-border/70 text-xs font-medium text-charcoal flex-shrink-0">
+              Continue reading
+            </a>
+          </article>
 
           <!-- Wraps below 360px of content: the button is 100px wide and the icon
                36px, so a single row left the text column at 42px and every word
@@ -779,6 +817,70 @@
   }
 
   apply();
+
+  /*
+    Last book opened, with its percentage and a way back in.
+
+    Read from GET /api/progress, which the reader keeps current, so this needs no
+    extra writing on every page turn. When nothing has been read the request
+    returns an empty list and the existing empty strip stays as the only thing
+    shown. A failed request is treated the same way: the honest empty state
+    beats a card claiming a book that may not exist.
+  */
+  var continueStrip = document.getElementById('continue-strip');
+  var emptyStrip = document.getElementById('empty-strip');
+
+  function showContinue(entry) {
+    if (!continueStrip) return;
+
+    var titleEl = document.getElementById('continue-title');
+    var percentEl = document.getElementById('continue-percent');
+    var barEl = document.getElementById('continue-bar');
+    var barWrap = document.getElementById('continue-bar-wrap');
+    var btn = document.getElementById('continue-btn');
+
+    var bookUrl = 'book.html?slug=' + encodeURIComponent(entry.slug);
+    var readerUrl = 'reader.html?slug=' + encodeURIComponent(entry.slug);
+
+    if (titleEl) {
+      titleEl.textContent = entry.title || entry.slug;
+      titleEl.setAttribute('href', bookUrl);
+    }
+
+    // percent is null for a book whose page count was never recorded. Showing
+    // "0%" there would be a number the server did not measure, so the bar and
+    // the label stay hidden and only the title and button are shown.
+    var hasPercent = typeof entry.percent === 'number';
+    if (percentEl) {
+      percentEl.textContent = hasPercent ? entry.percent + '%' : '';
+      percentEl.hidden = !hasPercent;
+    }
+    if (barEl && barWrap) {
+      barEl.style.width = hasPercent ? entry.percent + '%' : '0%';
+      barWrap.setAttribute('aria-valuenow', hasPercent ? String(entry.percent) : '0');
+      barWrap.hidden = !hasPercent;
+    }
+
+    if (btn) btn.setAttribute('href', readerUrl);
+
+    continueStrip.hidden = false;
+    if (emptyStrip) emptyStrip.hidden = true;
+  }
+
+  if (continueStrip && window.fetch) {
+    fetch('/api/progress', { headers: { Accept: 'application/json' } })
+      .then(function (res) {
+        if (!res.ok) throw new Error('progress request failed (' + res.status + ')');
+        return res.json();
+      })
+      .then(function (payload) {
+        var latest = (payload && payload.progress && payload.progress[0]) || null;
+        if (latest) showContinue(latest);
+      })
+      .catch(function () {
+        /* keep the empty strip: no claim is better than a wrong one */
+      });
+  }
 
   // Books added through add.html live in the database. The drawn cards stay as they
   // are; anything the page does not already show is appended once the API answers.
