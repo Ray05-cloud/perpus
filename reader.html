@@ -1,0 +1,1465 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='5' fill='%23F4F1EA'/%3E%3Cpath d='M12 7v10M12 7c-2 0-3.5-1-4.5-1.5v9.5c1 .5 2.5 1.5 4.5 1.5M12 7c2 0 3.5-1 4.5-1.5v9.5c-1 .5-2.5 1.5-4.5 1.5' stroke='%23DC5B5B' stroke-width='1.6' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<title>Reader - PERPUS</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,400&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<script src="https://cdn.tailwindcss.com?plugins=forms"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          cream: '#F4F1EA',
+          cardBg: '#EDEAE1',
+          lightCream: '#FAF9F5',
+          paper: '#FBF8F1',
+          coral: '#DC5B5B',
+          coralDark: '#C74A4A',
+          coralText: '#B23C3C',
+          charcoal: '#1F2024',
+          secondary: '#5F6066',
+          muted: '#63646A',
+          border: '#E4DFD5'
+        },
+        fontFamily: {
+          serif: ['"Cormorant Garamond"', 'Georgia', 'serif'],
+          sans: ['"Plus Jakarta Sans"', 'sans-serif']
+        },
+        boxShadow: {
+          book: '0 18px 30px -8px rgba(35, 30, 20, 0.28), 0 8px 12px -5px rgba(0, 0, 0, 0.1)',
+          soft: '0 8px 24px -4px rgba(45, 40, 30, 0.05)'
+        }
+      }
+    }
+  }
+</script>
+
+<style>
+  html { -webkit-text-size-adjust: 100%; }
+
+  /* Tailwind display utilities beat the browser's own [hidden] rule, so an
+     element carrying both `hidden` and `inline-flex` would stay visible. */
+  [hidden] { display: none !important; }
+
+  /* The rail, copied from the shelf so the reader feels like the same product. */
+  .nav-item {
+    color: #5F6066;
+    transition: color .18s ease, background-color .18s ease, transform .18s ease;
+  }
+  .nav-item:hover,
+  .nav-item:focus-visible {
+    color: #B23C3C;
+    background-color: #EFEBE2;
+  }
+  .nav-item:active { transform: scale(0.94); }
+  .nav-item[aria-current="page"] {
+    color: #B23C3C;
+    background-color: #F0E5E2;
+  }
+  .nav-item:focus-visible {
+    outline: 2px solid #B23C3C;
+    outline-offset: 2px;
+  }
+
+  /* A page is an object on a desk, not a card in a grid: the shadow is what
+     separates paper from the surrounding surface. */
+  .page-box {
+    position: relative;
+    line-height: 0;
+    background: #FBF8F1;
+    border-radius: 3px;
+    box-shadow: 0 16px 32px -10px rgba(40, 32, 25, 0.24), 0 3px 8px rgba(40, 32, 25, 0.08);
+    transition: box-shadow .2s ease;
+  }
+  .page-box canvas { display: block; border-radius: 3px; }
+
+  /* Highlights multiply over the scanned image so the ink underneath still
+     reads through the colour. */
+  .hl-layer {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+  }
+  .hl-layer.drawing { cursor: crosshair; }
+  .hl-mark {
+    position: absolute;
+    border-radius: 2px;
+    mix-blend-mode: multiply;
+    cursor: pointer;
+    transition: opacity .15s ease;
+  }
+  .hl-mark:hover { opacity: .75; }
+  .hl-mark[data-color="yellow"] { background: rgba(254, 240, 138, .55); }
+  .hl-mark[data-color="coral"]  { background: rgba(254, 202, 202, .55); }
+  .hl-mark[data-color="mint"]   { background: rgba(167, 243, 208, .55); }
+  .hl-mark:focus-visible {
+    outline: 2px solid #B23C3C;
+    outline-offset: 1px;
+  }
+  .hl-draft {
+    position: absolute;
+    border-radius: 2px;
+    background: rgba(220, 91, 91, .28);
+    border: 1px dashed rgba(178, 60, 60, .7);
+    pointer-events: none;
+  }
+
+  /* Scrollbars are invisible until the page actually overflows, so zooming in
+     does not leave a permanent grey strip next to the paper. */
+  .stage-scroll { scrollbar-width: thin; scrollbar-color: #D8D2C6 transparent; }
+
+  /* The stage centres the paper with auto margins, not with align-items:center.
+     A centred flex item that outgrows its scroll box overflows in both
+     directions, and a scroll container cannot start above its own origin, so
+     zooming in pushed the top of the page out of reach (the first line stayed
+     cut off no matter how far up you scrolled). Auto margins collapse to zero
+     once there is no free space, which keeps the page centred when it fits and
+     pinned to the top when it does not. */
+  #stage-scroll { align-items: flex-start; justify-content: flex-start; }
+  #stage-scroll > * { margin: auto; }
+  .stage-scroll::-webkit-scrollbar { width: 10px; height: 10px; }
+  .stage-scroll::-webkit-scrollbar-thumb {
+    background: #D8D2C6; border-radius: 999px; border: 3px solid transparent;
+    background-clip: content-box;
+  }
+  .stage-scroll::-webkit-scrollbar-track { background: transparent; }
+
+  /* Range input, so the scrubber matches the palette instead of the OS default. */
+  input[type="range"].scrub {
+    -webkit-appearance: none; appearance: none;
+    height: 4px; border-radius: 999px; background: #E1DCD1; cursor: pointer;
+  }
+  input[type="range"].scrub::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none;
+    width: 14px; height: 14px; border-radius: 999px;
+    background: #C74A4A; border: 2px solid #FBF8F1;
+    box-shadow: 0 1px 3px rgba(40, 32, 25, .3);
+  }
+  input[type="range"].scrub::-moz-range-thumb {
+    width: 14px; height: 14px; border-radius: 999px;
+    background: #C74A4A; border: 2px solid #FBF8F1;
+  }
+  input[type="range"].scrub:focus-visible {
+    outline: 2px solid #B23C3C; outline-offset: 3px;
+  }
+
+  .focus-ring:focus-visible {
+    outline: 2px solid #B23C3C;
+    outline-offset: 2px;
+  }
+
+  /* Fullscreen fallback: the reader takes the whole viewport and the page frame
+     drops away, so the paper sits on a plain surface. */
+  body.immersive { padding: 0; background: #ECE7DC; }
+  body.immersive > div { border-radius: 0; border-color: transparent; box-shadow: none; }
+  body.immersive aside[aria-label="Main navigation"] { display: none; }
+
+  /* Toggle state is styled here rather than by swapping Tailwind classes: the
+     CDN injects its stylesheet after this block, so two utilities of equal
+     specificity would resolve in Tailwind's order, not the intended one. */
+  .icon-btn[aria-pressed="true"] { background-color: #F1EDE3; color: #B23C3C; }
+  .pill-btn[aria-pressed="true"] { background-color: #F1EDE3; color: #B23C3C; }
+  .icon-btn:hover, .pill-btn:hover { color: #B23C3C; }
+  .icon-btn:hover { background-color: #F1EDE3; }
+  .tab:hover { color: #1F2024; }
+  .tab[aria-selected="true"] {
+    background-color: #FAF9F5;
+    color: #B23C3C;
+    font-weight: 600;
+    box-shadow: 0 1px 2px rgba(40, 32, 25, .07);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition-duration: .01ms !important; animation-duration: .01ms !important; }
+  }
+</style>
+</head>
+
+<body class="bg-[#ECE7DC] text-charcoal font-sans antialiased h-screen overflow-hidden p-3">
+
+<div class="w-full h-full bg-cream rounded-[28px] shadow-2xl flex overflow-hidden border border-[#ded8cb]/80">
+
+  <!-- Rail: the same four destinations as every other page -->
+  <aside aria-label="Main navigation" class="w-[72px] flex-shrink-0 bg-cream border-r border-border/70 flex flex-col items-center justify-between py-5 z-20">
+    <a class="nav-item w-11 h-11 rounded-xl flex items-center justify-center" href="index.html" aria-label="PERPUS home">
+      <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M4 5.5A1.5 1.5 0 0 1 5.5 4H10a2 2 0 0 1 2 2v13a1.7 1.7 0 0 0-1.7-1.7H4z"></path>
+        <path d="M20 5.5A1.5 1.5 0 0 0 18.5 4H14a2 2 0 0 0-2 2v13a1.7 1.7 0 0 1 1.7-1.7H20z"></path>
+      </svg>
+    </a>
+
+    <nav aria-label="Primary" class="flex flex-col items-center gap-1.5">
+      <a class="nav-item w-11 h-11 rounded-2xl flex items-center justify-center" href="index.html" aria-label="Home">
+        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M3 10.5 12 3l9 7.5V20a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 20z"></path>
+          <path d="M9.5 21.5v-8h5v8"></path>
+        </svg>
+      </a>
+      <a class="nav-item w-11 h-11 rounded-2xl flex items-center justify-center" href="index.html#shelf" aria-label="Library shelf">
+        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect x="4" y="4" width="16" height="16" rx="2"></rect>
+          <path d="M12 4v16"></path>
+        </svg>
+      </a>
+      <a class="nav-item w-11 h-11 rounded-2xl flex items-center justify-center" href="bookmarks.html" aria-label="Saved stories">
+        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path>
+        </svg>
+      </a>
+    </nav>
+
+    <a class="nav-item w-11 h-11 rounded-xl flex items-center justify-center" href="add.html" aria-label="Add a book">
+      <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M12 5v14"></path><path d="M5 12h14"></path>
+      </svg>
+    </a>
+  </aside>
+
+  <!-- Workspace -->
+  <div class="flex-1 flex flex-col min-w-0 h-full">
+
+    <header class="flex-shrink-0 px-5 h-16 flex items-center justify-between gap-4 border-b border-border/50">
+      <div class="flex items-center gap-3 min-w-0">
+        <a href="book.html" id="back-link"
+           class="focus-ring inline-flex items-center gap-1.5 min-h-[44px] px-3 rounded-full text-xs font-medium text-secondary hover:text-coralText hover:bg-cardBg transition-colors flex-shrink-0">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M19 12H5"></path><path d="M12 19l-7-7 7-7"></path>
+          </svg>
+          Book details
+        </a>
+        <div class="min-w-0 hidden md:block">
+          <h1 id="book-title" class="font-serif text-lg leading-tight truncate">Loading</h1>
+          <p id="book-author" class="text-[11px] text-secondary truncate"></p>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-1.5 flex-shrink-0">
+        <!-- Zoom -->
+        <div class="flex items-center gap-0.5 bg-cardBg/70 rounded-full px-1 py-0.5">
+          <button type="button" id="zoom-out" aria-label="Zoom out"
+                  class="focus-ring w-11 h-11 rounded-full flex items-center justify-center text-secondary hover:text-coralText hover:bg-cream transition-colors">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14"></path></svg>
+          </button>
+          <button type="button" id="zoom-reset" aria-label="Reset zoom to fit"
+                  class="focus-ring min-h-[44px] min-w-[58px] px-1.5 rounded-full text-[11px] font-semibold tabular-nums text-charcoal hover:text-coralText transition-colors">
+            <span id="zoom-level">100%</span>
+          </button>
+          <button type="button" id="zoom-in" aria-label="Zoom in"
+                  class="focus-ring w-11 h-11 rounded-full flex items-center justify-center text-secondary hover:text-coralText hover:bg-cream transition-colors">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14"></path><path d="M5 12h14"></path></svg>
+          </button>
+        </div>
+
+        <!-- Layout -->
+        <div class="flex items-center gap-0.5 bg-cardBg/70 rounded-full p-0.5" role="group" aria-label="Page layout">
+          <button type="button" id="spread-single" aria-pressed="true" aria-label="One page"
+                  class="icon-btn focus-ring w-11 h-11 rounded-full flex items-center justify-center text-secondary transition-colors">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="7" y="3" width="10" height="18" rx="1.5"></rect>
+            </svg>
+          </button>
+          <button type="button" id="spread-double" aria-pressed="false" aria-label="Two pages side by side"
+                  class="icon-btn focus-ring w-11 h-11 rounded-full flex items-center justify-center text-secondary transition-colors">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="3" y="3" width="8" height="18" rx="1.5"></rect>
+              <rect x="13" y="3" width="8" height="18" rx="1.5"></rect>
+            </svg>
+          </button>
+        </div>
+
+        <button type="button" id="fullscreen-toggle" aria-pressed="false" aria-label="Fullscreen"
+                class="icon-btn focus-ring w-11 h-11 rounded-full flex items-center justify-center text-secondary transition-colors">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M4 9V5.5A1.5 1.5 0 0 1 5.5 4H9"></path>
+            <path d="M15 4h3.5A1.5 1.5 0 0 1 20 5.5V9"></path>
+            <path d="M20 15v3.5a1.5 1.5 0 0 1-1.5 1.5H15"></path>
+            <path d="M9 20H5.5A1.5 1.5 0 0 1 4 18.5V15"></path>
+          </svg>
+        </button>
+
+        <button type="button" id="panel-toggle" aria-pressed="true" aria-controls="annotation-panel"
+                class="pill-btn focus-ring inline-flex items-center gap-1.5 min-h-[44px] px-3.5 rounded-full bg-cardBg/70 text-xs font-medium text-charcoal hover:text-coralText transition-colors">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="3" y="4" width="18" height="16" rx="2"></rect>
+            <path d="M14 4v16"></path>
+          </svg>
+          <span id="panel-count" class="tabular-nums">Notes</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Stage -->
+    <main class="flex-1 min-h-0 relative flex flex-col">
+
+      <div id="stage-scroll" class="stage-scroll flex-1 min-h-0 overflow-auto flex items-center justify-center p-6">
+        <div id="spread" class="flex items-start justify-center gap-5" aria-live="polite">
+          <div class="page-slot flex flex-col items-center gap-2" id="slot-left">
+            <div class="page-box" id="box-left">
+              <canvas id="canvas-left"></canvas>
+              <div class="hl-layer" id="hl-left"></div>
+            </div>
+          </div>
+          <div class="page-slot flex flex-col items-center gap-2" id="slot-right" hidden>
+            <div class="page-box" id="box-right">
+              <canvas id="canvas-right"></canvas>
+              <div class="hl-layer" id="hl-right"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- States. One of these replaces the spread when something is wrong. -->
+        <div id="state-loading" class="flex flex-col items-center gap-3 text-center">
+          <svg class="w-7 h-7 text-coralText animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <circle cx="12" cy="12" r="9" stroke-opacity=".2"></circle>
+            <path d="M21 12a9 9 0 0 0-9-9" stroke-linecap="round"></path>
+          </svg>
+          <p class="text-sm text-secondary">Opening the PDF<span id="loading-progress"></span></p>
+        </div>
+
+        <div id="state-error" hidden class="max-w-sm text-center">
+          <p class="font-serif text-2xl text-charcoal">This PDF could not be opened</p>
+          <p id="error-detail" class="text-xs text-secondary leading-relaxed mt-2"></p>
+          <a href="index.html#shelf" class="inline-flex items-center justify-center min-h-[44px] px-5 mt-4 rounded-full bg-coralDark text-white text-xs font-semibold">Back to the shelf</a>
+        </div>
+
+        <div id="state-nopdf" hidden class="max-w-sm text-center">
+          <p class="font-serif text-2xl text-charcoal">No PDF attached yet</p>
+          <p class="text-xs text-secondary leading-relaxed mt-2">This book is on the shelf without a file. Attach one from the book page and it will open here.</p>
+          <a id="nopdf-link" href="index.html#shelf" class="inline-flex items-center justify-center min-h-[44px] px-5 mt-4 rounded-full bg-coralDark text-white text-xs font-semibold">Open the book page</a>
+        </div>
+      </div>
+
+      <!-- Page controls -->
+      <div id="hud" class="flex-shrink-0 px-5 pb-4">
+        <div class="flex items-center gap-3 bg-lightCream/90 border border-border/70 rounded-2xl px-3 py-2 shadow-soft">
+
+          <div class="flex items-center gap-1 flex-shrink-0">
+            <button type="button" id="page-prev" aria-label="Previous page"
+                    class="focus-ring w-11 h-11 rounded-xl flex items-center justify-center text-secondary hover:text-coralText hover:bg-cardBg transition-colors">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M15 5l-7 7 7 7"></path>
+              </svg>
+            </button>
+            <button type="button" id="page-next" aria-label="Next page"
+                    class="focus-ring w-11 h-11 rounded-xl flex items-center justify-center text-secondary hover:text-coralText hover:bg-cardBg transition-colors">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M9 5l7 7-7 7"></path>
+              </svg>
+            </button>
+          </div>
+
+          <div class="flex items-center gap-1.5 flex-shrink-0">
+            <label class="sr-only" for="page-jump">Page</label>
+            <input id="page-jump" type="number" min="1" value="1" inputmode="numeric"
+                   class="focus-ring w-14 h-9 text-center text-xs font-semibold tabular-nums bg-cream border border-border rounded-lg text-charcoal px-1 py-0">
+            <span id="spread-end" class="-ml-1 text-[11px] font-semibold text-charcoal tabular-nums" hidden></span>
+            <span class="text-[11px] text-secondary tabular-nums">/ <span id="page-total">0</span></span>
+          </div>
+
+          <div class="hidden sm:flex items-center gap-2 flex-1 min-w-0 px-1">
+            <span class="text-[10px] text-muted tabular-nums flex-shrink-0">1</span>
+            <label class="sr-only" for="page-slider">Page position</label>
+            <input id="page-slider" type="range" class="scrub w-full" min="1" max="1" value="1">
+            <span id="slider-max" class="text-[10px] text-muted tabular-nums flex-shrink-0">1</span>
+          </div>
+
+          <div class="flex items-center gap-1 flex-shrink-0 ml-auto">
+            <!-- Highlighter, with its three colours -->
+            <div class="relative">
+              <button type="button" id="highlighter-btn" aria-pressed="false" aria-label="Highlight an area"
+                      class="icon-btn focus-ring w-11 h-11 rounded-xl flex items-center justify-center text-secondary transition-colors">
+                <svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M4 20h6l10-10a2.5 2.5 0 0 0-3.5-3.5L6.5 16.5 4 20z"></path>
+                  <path d="M13.5 7.5 16.5 10.5"></path>
+                </svg>
+              </button>
+              <div id="color-picker" hidden
+                   class="absolute bottom-12 left-1/2 -translate-x-1/2 z-30 flex items-center gap-1.5 bg-lightCream border border-border rounded-full px-2.5 py-2 shadow-lg">
+                <button type="button" data-color="yellow" aria-label="Yellow highlight" aria-pressed="true"
+                        class="focus-ring w-6 h-6 rounded-full bg-[#FEF08A] border-2 border-coralText"></button>
+                <button type="button" data-color="coral" aria-label="Coral highlight" aria-pressed="false"
+                        class="focus-ring w-6 h-6 rounded-full bg-[#FECACA] border border-border"></button>
+                <button type="button" data-color="mint" aria-label="Mint highlight" aria-pressed="false"
+                        class="focus-ring w-6 h-6 rounded-full bg-[#A7F3D0] border border-border"></button>
+              </div>
+            </div>
+
+            <button type="button" id="bookmark-page" aria-pressed="false" aria-label="Bookmark this page"
+                    class="icon-btn focus-ring w-11 h-11 rounded-xl flex items-center justify-center text-secondary transition-colors">
+              <svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path>
+              </svg>
+            </button>
+          </div>
+        </div>
+        <p id="hud-hint" class="text-[10.5px] text-muted text-center mt-2 h-3"></p>
+      </div>
+    </main>
+  </div>
+
+  <!-- Annotation panel -->
+  <aside id="annotation-panel" aria-label="Notes and highlights"
+         class="w-[320px] flex-shrink-0 bg-lightCream border-l border-border/70 flex flex-col z-10">
+    <div class="px-4 pt-4 pb-3 border-b border-border/50 flex flex-col gap-2.5">
+      <div class="flex items-center justify-between">
+        <h2 class="font-serif text-lg leading-none">Notes</h2>
+        <button type="button" id="panel-close" aria-label="Close notes panel"
+                class="focus-ring w-11 h-11 rounded-full flex items-center justify-center text-secondary hover:text-coralText hover:bg-cardBg transition-colors">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+            <path d="M6 6l12 12M18 6L6 18"></path>
+          </svg>
+        </button>
+      </div>
+      <div class="flex items-center gap-1 bg-cardBg/80 p-1 rounded-xl" role="tablist" aria-label="Filter notes">
+        <button type="button" role="tab" id="tab-all" aria-selected="true" data-filter="all"
+                class="tab focus-ring flex-1 min-h-[44px] rounded-lg text-[11px] text-secondary transition-colors">All</button>
+        <button type="button" role="tab" id="tab-notes" aria-selected="false" data-filter="note"
+                class="tab focus-ring flex-1 min-h-[44px] rounded-lg text-[11px] text-secondary transition-colors">Notes</button>
+        <button type="button" role="tab" id="tab-highlights" aria-selected="false" data-filter="highlight"
+                class="tab focus-ring flex-1 min-h-[44px] rounded-lg text-[11px] text-secondary transition-colors">Marks</button>
+      </div>
+    </div>
+
+    <div id="notes-list" class="flex-1 overflow-y-auto stage-scroll p-3 space-y-2"></div>
+
+    <div id="notes-empty" class="flex-1 flex flex-col items-center justify-center px-6 text-center">
+      <svg class="w-6 h-6 text-muted/60 mb-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M5 4h14a1 1 0 0 1 1 1v11l-4 4H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z"></path>
+        <path d="M16 20v-4h4"></path>
+      </svg>
+      <p class="text-xs text-secondary leading-relaxed">Nothing here yet. Write a note below, or turn on the highlighter and drag over a passage.</p>
+    </div>
+
+    <div class="p-3 border-t border-border/50">
+      <label class="sr-only" for="note-input">New note</label>
+      <textarea id="note-input" rows="2" placeholder="Write a note for page 1"
+                class="w-full resize-none bg-white border border-border rounded-xl px-3 py-2 text-xs leading-relaxed text-charcoal placeholder:text-muted focus:border-coralText focus:ring-0 focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-coralText focus-visible:outline-offset-1"></textarea>
+      <div class="flex items-center justify-between mt-2">
+        <span id="note-status" class="text-[10.5px] text-coralText min-h-[14px]" role="status" aria-live="polite"></span>
+        <button type="button" id="note-save"
+                class="focus-ring inline-flex items-center justify-center min-h-[44px] px-4 rounded-full bg-coralDark text-white text-[11px] font-semibold hover:bg-[#B23C3C] transition-colors">
+          Save note
+        </button>
+      </div>
+    </div>
+  </aside>
+</div>
+
+<!-- Popover for a highlight that was clicked -->
+<div id="hl-menu" hidden
+     class="fixed z-50 flex items-center gap-1 bg-lightCream border border-border rounded-xl shadow-lg p-1">
+  <button type="button" id="hl-delete"
+          class="focus-ring inline-flex items-center gap-1.5 min-h-[32px] px-2.5 rounded-lg text-[11px] font-semibold text-coralText hover:bg-[#F7E7E4] transition-colors">
+    <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M4 7h16"></path><path d="M9 7V5h6v2"></path><path d="M6 7l1 13h10l1-13"></path>
+    </svg>
+    Delete
+  </button>
+</div>
+
+<div id="toast" hidden
+     class="fixed bottom-5 left-1/2 -translate-x-1/2 z-50 bg-charcoal text-cream text-xs font-medium px-4 py-2.5 rounded-xl shadow-lg">
+  <span id="toast-text"></span>
+</div>
+
+<script type="module">
+import * as pdfjsLib from '/vendor/pdfjs/pdf.min.mjs';
+
+pdfjsLib.GlobalWorkerOptions.workerSrc = '/vendor/pdfjs/pdf.worker.min.mjs';
+
+/* ------------------------------------------------------------------ *
+ * State
+ * ------------------------------------------------------------------ */
+
+const params = new URLSearchParams(location.search);
+const slug = (params.get('slug') || '').trim();
+
+const el = (id) => document.getElementById(id);
+
+const dom = {
+  title: el('book-title'),
+  author: el('book-author'),
+  backLink: el('back-link'),
+  stageScroll: el('stage-scroll'),
+  spread: el('spread'),
+  slotLeft: el('slot-left'),
+  slotRight: el('slot-right'),
+  boxLeft: el('box-left'),
+  boxRight: el('box-right'),
+  canvasLeft: el('canvas-left'),
+  canvasRight: el('canvas-right'),
+  hlLeft: el('hl-left'),
+  hlRight: el('hl-right'),
+  loading: el('state-loading'),
+  loadingProgress: el('loading-progress'),
+  error: el('state-error'),
+  errorDetail: el('error-detail'),
+  noPdf: el('state-nopdf'),
+  nopdfLink: el('nopdf-link'),
+  hud: el('hud'),
+  hudHint: el('hud-hint'),
+  prev: el('page-prev'),
+  next: el('page-next'),
+  jump: el('page-jump'),
+  total: el('page-total'),
+  slider: el('page-slider'),
+  sliderMax: el('slider-max'),
+  zoomOut: el('zoom-out'),
+  zoomIn: el('zoom-in'),
+  zoomReset: el('zoom-reset'),
+  zoomLevel: el('zoom-level'),
+  spreadSingle: el('spread-single'),
+  spreadDouble: el('spread-double'),
+  fullscreen: el('fullscreen-toggle'),
+  panelToggle: el('panel-toggle'),
+  panelCount: el('panel-count'),
+  panel: el('annotation-panel'),
+  panelClose: el('panel-close'),
+  tabs: [el('tab-all'), el('tab-notes'), el('tab-highlights')],
+  notesList: el('notes-list'),
+  notesEmpty: el('notes-empty'),
+  noteInput: el('note-input'),
+  noteSave: el('note-save'),
+  noteStatus: el('note-status'),
+  highlighterBtn: el('highlighter-btn'),
+  colorPicker: el('color-picker'),
+  colorButtons: Array.from(document.querySelectorAll('#color-picker [data-color]')),
+  pageRange: el('spread-end'),
+  bookmarkPage: el('bookmark-page'),
+  hlMenu: el('hl-menu'),
+  hlDelete: el('hl-delete'),
+  toast: el('toast'),
+  toastText: el('toast-text')
+};
+
+const state = {
+  doc: null,
+  numPages: 0,
+  page: 1,
+  zoom: 100,
+  spread: false,
+  notes: [],
+  filter: 'all',
+  highlighter: false,
+  color: 'yellow',
+  selectedHighlight: null,
+  rendering: false,
+  pendingRender: false,
+  paintedWidth: 0,
+  fitFixes: 0,
+  saveTimer: null
+};
+
+const ZOOM_STEPS = [60, 75, 90, 100, 110, 125, 150, 175, 200, 250];
+
+/* ------------------------------------------------------------------ *
+ * Small helpers
+ * ------------------------------------------------------------------ */
+
+function show(node, visible) {
+  node.hidden = !visible;
+}
+
+let toastTimer = null;
+function toast(message) {
+  dom.toastText.textContent = message;
+  show(dom.toast, true);
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => show(dom.toast, false), 2400);
+}
+
+function pageUrl(slugName) {
+  return '/api/books/' + encodeURIComponent(slugName) + '/pdf';
+}
+
+async function jsonFetch(url, options) {
+  const res = await fetch(url, Object.assign({ headers: { Accept: 'application/json' } }, options));
+  let body = null;
+  try {
+    body = await res.json();
+  } catch (err) {
+    body = null;
+  }
+  if (!res.ok) {
+    const message = body && body.error ? body.error : 'Request failed (' + res.status + ')';
+    throw new Error(message);
+  }
+  return body;
+}
+
+function relativeTime(iso) {
+  const then = new Date(iso).getTime();
+  if (!Number.isFinite(then)) return '';
+  const mins = Math.round((Date.now() - then) / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return mins + ' min ago';
+  const hours = Math.round(mins / 60);
+  if (hours < 24) return hours + ' h ago';
+  const days = Math.round(hours / 24);
+  return days + (days === 1 ? ' day ago' : ' days ago');
+}
+
+/* ------------------------------------------------------------------ *
+ * Rendering
+ * ------------------------------------------------------------------ */
+
+function fitScale(page) {
+  const base = page.getViewport({ scale: 1 });
+  const pad = 24;
+  const available = dom.stageScroll.clientWidth - pad * 2;
+  const perPage = state.spread ? (available - 20) / 2 : available;
+  const height = dom.stageScroll.clientHeight - pad * 2;
+
+  // Both dimensions matter: a tall page on a short window must still fit.
+  return Math.min(perPage / base.width, height / base.height);
+}
+
+async function paint(canvas, layer, box, pageNum) {
+  const page = await state.doc.getPage(pageNum);
+  const scale = fitScale(page) * (state.zoom / 100);
+  const viewport = page.getViewport({ scale });
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const ctx = canvas.getContext('2d', { alpha: false });
+
+  canvas.width = Math.floor(viewport.width * dpr);
+  canvas.height = Math.floor(viewport.height * dpr);
+  canvas.style.width = Math.round(viewport.width) + 'px';
+  canvas.style.height = Math.round(viewport.height) + 'px';
+
+  // The canvas is rendered at device resolution but laid out at CSS size, so the
+  // scan stays sharp on a high density screen without changing the layout.
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.fillStyle = '#FBF8F1';
+  ctx.fillRect(0, 0, viewport.width, viewport.height);
+
+  await page.render({ canvasContext: ctx, viewport }).promise;
+
+  box.dataset.page = String(pageNum);
+  layer.dataset.page = String(pageNum);
+  state.paintedWidth = Math.round(viewport.width);
+  paintHighlights(layer, pageNum);
+}
+
+// The very first paint can happen while the layout is still settling, which
+// leaves the page drawn at a fraction of its fit size. Comparing what was drawn
+// with what the stage would ask for now catches that once, without looping.
+async function confirmFit() {
+  if (!state.doc) return;
+  const page = await state.doc.getPage(state.page);
+  const wanted = Math.round(page.getViewport({ scale: fitScale(page) * (state.zoom / 100) }).width);
+  if (Math.abs(wanted - state.paintedWidth) <= 4) return;
+  if (state.fitFixes >= 2) return;
+  state.fitFixes += 1;
+  render();
+}
+
+async function render() {
+  if (!state.doc) return;
+
+  // A page turn during a render would draw two pages on top of each other, so a
+  // second request waits for the first to finish instead of starting over.
+  if (state.rendering) {
+    state.pendingRender = true;
+    return;
+  }
+  state.rendering = true;
+
+  try {
+    const left = state.page;
+    const right = state.spread ? state.page + 1 : null;
+
+    show(dom.slotLeft, true);
+    await paint(dom.canvasLeft, dom.hlLeft, dom.boxLeft, left);
+
+    if (right && right <= state.numPages) {
+      show(dom.slotRight, true);
+      await paint(dom.canvasRight, dom.hlRight, dom.boxRight, right);
+    } else {
+      show(dom.slotRight, false);
+    }
+
+    syncIndicators();
+
+    // Runs after the current frame so the layout has settled.
+    requestAnimationFrame(() => {
+      confirmFit().catch(() => {});
+    });
+  } catch (err) {
+    console.error('Render failed', err);
+    fail(err.message || 'The page could not be drawn.');
+  } finally {
+    state.rendering = false;
+    if (state.pendingRender) {
+      state.pendingRender = false;
+      render();
+    }
+  }
+}
+
+/* ------------------------------------------------------------------ *
+ * Highlights
+ * ------------------------------------------------------------------ */
+
+function paintHighlights(layer, pageNum) {
+  layer.querySelectorAll('.hl-mark').forEach((node) => node.remove());
+  const marks = state.notes.filter((n) => n.kind === 'highlight' && n.page === pageNum && n.rect);
+
+  marks.forEach((note) => {
+    const mark = document.createElement('button');
+    mark.type = 'button';
+    mark.className = 'hl-mark';
+    mark.dataset.color = note.color || 'yellow';
+    mark.dataset.id = String(note.id);
+    mark.style.left = (note.rect.x * 100) + '%';
+    mark.style.top = (note.rect.y * 100) + '%';
+    mark.style.width = (note.rect.w * 100) + '%';
+    mark.style.height = (note.rect.h * 100) + '%';
+    mark.setAttribute('aria-label', 'Highlight on page ' + pageNum + ', open actions');
+    mark.addEventListener('click', (event) => {
+      event.stopPropagation();
+      openHighlightMenu(note, mark);
+    });
+    layer.appendChild(mark);
+  });
+}
+
+function openHighlightMenu(note, mark) {
+  state.selectedHighlight = note;
+  const rect = mark.getBoundingClientRect();
+  show(dom.hlMenu, true);
+  const top = Math.max(8, rect.top - 44);
+  const left = Math.min(window.innerWidth - 140, Math.max(8, rect.left));
+  dom.hlMenu.style.top = top + 'px';
+  dom.hlMenu.style.left = left + 'px';
+}
+
+function closeHighlightMenu() {
+  state.selectedHighlight = null;
+  show(dom.hlMenu, false);
+}
+
+async function deleteHighlight() {
+  const note = state.selectedHighlight;
+  closeHighlightMenu();
+  if (!note) return;
+  try {
+    await jsonFetch('/api/books/' + encodeURIComponent(slug) + '/notes/' + note.id, { method: 'DELETE' });
+    state.notes = state.notes.filter((n) => n.id !== note.id);
+    refreshNotes();
+    await render();
+    toast('Highlight removed');
+  } catch (err) {
+    toast(err.message);
+  }
+}
+
+function enableDrawing(layer) {
+  let start = null;
+  let draft = null;
+
+  layer.addEventListener('pointerdown', (event) => {
+    if (!state.highlighter) return;
+    if (event.button !== 0) return;
+    const box = layer.parentElement.getBoundingClientRect();
+    start = {
+      x: (event.clientX - box.left) / box.width,
+      y: (event.clientY - box.top) / box.height
+    };
+    draft = document.createElement('div');
+    draft.className = 'hl-draft';
+    layer.appendChild(draft);
+    layer.setPointerCapture(event.pointerId);
+    event.preventDefault();
+  });
+
+  layer.addEventListener('pointermove', (event) => {
+    if (!start || !draft) return;
+    const box = layer.parentElement.getBoundingClientRect();
+    const now = {
+      x: Math.min(1, Math.max(0, (event.clientX - box.left) / box.width)),
+      y: Math.min(1, Math.max(0, (event.clientY - box.top) / box.height))
+    };
+    const x = Math.min(start.x, now.x);
+    const y = Math.min(start.y, now.y);
+    draft.style.left = (x * 100) + '%';
+    draft.style.top = (y * 100) + '%';
+    draft.style.width = (Math.abs(now.x - start.x) * 100) + '%';
+    draft.style.height = (Math.abs(now.y - start.y) * 100) + '%';
+  });
+
+  layer.addEventListener('pointerup', async (event) => {
+    if (!start || !draft) return;
+    const box = layer.parentElement.getBoundingClientRect();
+    const end = {
+      x: Math.min(1, Math.max(0, (event.clientX - box.left) / box.width)),
+      y: Math.min(1, Math.max(0, (event.clientY - box.top) / box.height))
+    };
+    const rect = {
+      x: Math.min(start.x, end.x),
+      y: Math.min(start.y, end.y),
+      w: Math.abs(end.x - start.x),
+      h: Math.abs(end.y - start.y)
+    };
+    draft.remove();
+    draft = null;
+    start = null;
+
+    // A click without a drag is not a highlight; it is a stray tap.
+    if (rect.w < 0.01 || rect.h < 0.01) return;
+
+    const pageNum = Number(layer.dataset.page);
+    try {
+      const body = await jsonFetch('/api/books/' + encodeURIComponent(slug) + '/notes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          page: pageNum,
+          body: '',
+          kind: 'highlight',
+          color: state.color,
+          rect
+        })
+      });
+      state.notes.unshift(body.note);
+      refreshNotes();
+      await render();
+      toast('Highlight saved on page ' + pageNum);
+    } catch (err) {
+      toast(err.message);
+    }
+  });
+
+  layer.addEventListener('pointercancel', () => {
+    if (draft) draft.remove();
+    draft = null;
+    start = null;
+  });
+}
+
+/* ------------------------------------------------------------------ *
+ * Indicators and navigation
+ * ------------------------------------------------------------------ */
+
+function syncIndicators() {
+  const total = state.numPages;
+  const last = state.spread && state.page + 1 <= total ? state.page + 1 : state.page;
+
+  dom.jump.value = String(state.page);
+  dom.jump.max = String(total);
+  dom.total.textContent = String(total);
+  dom.slider.max = String(total);
+  dom.slider.value = String(state.page);
+  dom.sliderMax.textContent = String(total);
+  dom.zoomLevel.textContent = state.zoom + '%';
+
+  // In a spread two pages are on screen; naming the second one avoids showing a
+  // counter that disagrees with what is visible.
+  const showingTwo = state.spread && last !== state.page;
+  dom.pageRange.textContent = showingTwo ? '–' + last : '';
+  show(dom.pageRange, showingTwo);
+
+  dom.prev.disabled = state.page <= 1;
+  dom.prev.classList.toggle('opacity-40', state.page <= 1);
+  dom.prev.classList.toggle('cursor-not-allowed', state.page <= 1);
+
+  dom.next.disabled = last >= total;
+  dom.next.classList.toggle('opacity-40', last >= total);
+  dom.next.classList.toggle('cursor-not-allowed', last >= total);
+
+  const bookmarked = hasPageBookmark(state.page);
+  dom.bookmarkPage.setAttribute('aria-pressed', bookmarked ? 'true' : 'false');
+  dom.bookmarkPage.setAttribute('aria-label',
+    bookmarked ? 'Remove bookmark on page ' + state.page : 'Bookmark page ' + state.page);
+
+  // Layout buttons, fullscreen and the panel all carry .icon-btn/.pill-btn, so
+  // their pressed look comes from CSS and only the ARIA state is set here.
+  dom.spreadSingle.setAttribute('aria-pressed', state.spread ? 'false' : 'true');
+  dom.spreadDouble.setAttribute('aria-pressed', state.spread ? 'true' : 'false');
+
+  dom.hudHint.textContent = state.highlighter
+    ? 'Drag across the page to mark an area.'
+    : 'Arrow keys turn pages. F for fullscreen, N for notes.';
+
+  dom.noteInput.placeholder = 'Write a note for page ' + state.page;
+}
+
+function hasPageBookmark(pageNum) {
+  return state.notes.some((n) => n.kind === 'bookmark' && n.page === pageNum);
+}
+
+function clampPage(value) {
+  const n = Math.round(Number(value));
+  if (!Number.isFinite(n)) return state.page;
+  return Math.min(state.numPages || 1, Math.max(1, n));
+}
+
+function goTo(pageNum, options) {
+  const next = clampPage(pageNum);
+  if (next === state.page) {
+    syncIndicators();
+    return;
+  }
+  state.page = next;
+  render();
+  if (!options || options.scroll !== false) {
+    dom.stageScroll.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+  }
+  scheduleProgressSave();
+}
+
+function scheduleProgressSave() {
+  clearTimeout(state.saveTimer);
+  state.saveTimer = setTimeout(saveProgress, 700);
+}
+
+async function saveProgress() {
+  if (!state.doc || !slug) return;
+  try {
+    await jsonFetch('/api/books/' + encodeURIComponent(slug) + '/progress', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ page: state.page, zoom: state.zoom, spread: state.spread })
+    });
+  } catch (err) {
+    // Losing the position is not worth interrupting reading for.
+    console.warn('Progress not saved:', err.message);
+  }
+}
+
+function setZoom(percent) {
+  state.zoom = Math.min(ZOOM_STEPS[ZOOM_STEPS.length - 1], Math.max(ZOOM_STEPS[0], Math.round(percent)));
+  render();
+  scheduleProgressSave();
+}
+
+function stepZoom(direction) {
+  const current = state.zoom;
+  if (direction > 0) {
+    const next = ZOOM_STEPS.find((v) => v > current);
+    setZoom(next || ZOOM_STEPS[ZOOM_STEPS.length - 1]);
+  } else {
+    const lower = ZOOM_STEPS.filter((v) => v < current);
+    setZoom(lower.length ? lower[lower.length - 1] : ZOOM_STEPS[0]);
+  }
+}
+
+function setSpread(on) {
+  if (state.spread === on) return;
+  state.spread = on;
+  // A spread starts on an odd page so the pair reads left to right like a book.
+  if (on && state.page % 2 === 0) state.page = Math.max(1, state.page - 1);
+  render();
+  scheduleProgressSave();
+}
+
+/* ------------------------------------------------------------------ *
+ * Notes panel
+ * ------------------------------------------------------------------ */
+
+function noteIcon(kind) {
+  if (kind === 'highlight') {
+    return '<path d="M4 20h6l10-10a2.5 2.5 0 0 0-3.5-3.5L6.5 16.5 4 20z"></path>';
+  }
+  if (kind === 'bookmark') {
+    return '<path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path>';
+  }
+  return '<path d="M5 4h14a1 1 0 0 1 1 1v11l-4 4H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z"></path><path d="M16 20v-4h4"></path>';
+}
+
+function noteLabel(kind) {
+  if (kind === 'highlight') return 'Highlight';
+  if (kind === 'bookmark') return 'Bookmark';
+  return 'Note';
+}
+
+function refreshNotes() {
+  // "Marks" covers both kinds of page marker: a drawn area and a bookmarked
+  // page. Showing only highlights there would hide bookmarks from every tab.
+  const visible = state.notes.filter((n) => {
+    if (state.filter === 'all') return true;
+    if (state.filter === 'note') return n.kind === 'note';
+    return n.kind !== 'note';
+  });
+
+  dom.notesList.innerHTML = '';
+  visible.forEach((note) => {
+    const card = document.createElement('div');
+    card.className = 'bg-white border border-border/80 rounded-xl p-3';
+
+    const head = document.createElement('div');
+    head.className = 'flex items-center justify-between gap-2';
+
+    const label = document.createElement('span');
+    label.className = 'inline-flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-wide text-coralText';
+    label.innerHTML = '<svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+      noteIcon(note.kind) + '</svg>' + noteLabel(note.kind);
+    head.appendChild(label);
+
+    const time = document.createElement('span');
+    time.className = 'text-[10px] text-muted';
+    time.textContent = relativeTime(note.createdAt);
+    head.appendChild(time);
+    card.appendChild(head);
+
+    if (note.body) {
+      const body = document.createElement('p');
+      body.className = 'text-[11.5px] text-charcoal leading-relaxed mt-1.5 break-words';
+      body.textContent = note.body;
+      card.appendChild(body);
+    }
+
+    const foot = document.createElement('div');
+    foot.className = 'flex items-center justify-between gap-2 mt-2';
+
+    const jump = document.createElement('button');
+    jump.type = 'button';
+    jump.className = 'focus-ring inline-flex items-center gap-1 min-h-[36px] px-2.5 rounded-lg text-[10.5px] font-semibold text-secondary hover:text-coralText hover:bg-cardBg transition-colors';
+    jump.innerHTML = '<span>Page ' + note.page + '</span>';
+    jump.setAttribute('aria-label', 'Go to page ' + note.page);
+    jump.addEventListener('click', () => goTo(note.page));
+    foot.appendChild(jump);
+
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'focus-ring inline-flex items-center justify-center min-h-[36px] min-w-[36px] rounded-lg text-muted hover:text-coralText hover:bg-cardBg transition-colors';
+    remove.setAttribute('aria-label', 'Delete ' + noteLabel(note.kind).toLowerCase() + ' on page ' + note.page);
+    remove.innerHTML = '<svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16"></path><path d="M9 7V5h6v2"></path><path d="M6 7l1 13h10l1-13"></path></svg>';
+    remove.addEventListener('click', () => removeNote(note));
+    foot.appendChild(remove);
+
+    card.appendChild(foot);
+    dom.notesList.appendChild(card);
+  });
+
+  const empty = visible.length === 0;
+  show(dom.notesList, !empty);
+  show(dom.notesEmpty, empty);
+  dom.panelCount.textContent = state.notes.length ? 'Notes (' + state.notes.length + ')' : 'Notes';
+}
+
+async function removeNote(note) {
+  try {
+    await jsonFetch('/api/books/' + encodeURIComponent(slug) + '/notes/' + note.id, { method: 'DELETE' });
+    state.notes = state.notes.filter((n) => n.id !== note.id);
+    refreshNotes();
+    syncIndicators();
+    await render();
+    toast('Removed');
+  } catch (err) {
+    toast(err.message);
+  }
+}
+
+async function addNote() {
+  const text = dom.noteInput.value.trim();
+  if (!text) {
+    dom.noteInput.focus();
+    dom.noteStatus.textContent = 'Write something first.';
+    return;
+  }
+  dom.noteSave.disabled = true;
+  dom.noteStatus.textContent = '';
+  try {
+    const body = await jsonFetch('/api/books/' + encodeURIComponent(slug) + '/notes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ page: state.page, body: text, kind: 'note' })
+    });
+    state.notes.unshift(body.note);
+    dom.noteInput.value = '';
+    state.filter = 'all';
+    syncTabs();
+    refreshNotes();
+    toast('Note saved on page ' + state.page);
+  } catch (err) {
+    dom.noteStatus.textContent = err.message;
+  } finally {
+    dom.noteSave.disabled = false;
+  }
+}
+
+async function togglePageBookmark() {
+  const existing = state.notes.find((n) => n.kind === 'bookmark' && n.page === state.page);
+  if (existing) {
+    await removeNote(existing);
+    return;
+  }
+  try {
+    const body = await jsonFetch('/api/books/' + encodeURIComponent(slug) + '/notes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ page: state.page, body: '', kind: 'bookmark' })
+    });
+    state.notes.unshift(body.note);
+    refreshNotes();
+    syncIndicators();
+    toast('Page ' + state.page + ' bookmarked');
+  } catch (err) {
+    toast(err.message);
+  }
+}
+
+function syncTabs() {
+  dom.tabs.forEach((tab) => {
+    tab.setAttribute('aria-selected', tab.dataset.filter === state.filter ? 'true' : 'false');
+  });
+}
+
+/* ------------------------------------------------------------------ *
+ * Panel, fullscreen, highlighter
+ * ------------------------------------------------------------------ */
+function setPanel(open) {
+  show(dom.panel, open);
+  dom.panelToggle.setAttribute('aria-pressed', open ? 'true' : 'false');
+  // The stage width changes with the panel, so the page has to be re-fitted.
+  requestAnimationFrame(() => {
+    if (state.doc) render();
+  });
+}
+
+function setHighlighter(on) {
+  state.highlighter = on;
+  dom.highlighterBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
+  show(dom.colorPicker, on);
+  [dom.hlLeft, dom.hlRight].forEach((layer) => layer.classList.toggle('drawing', on));
+  dom.hudHint.textContent = on
+    ? 'Drag across the page to mark an area.'
+    : 'Arrow keys turn pages. F for fullscreen, N for notes.';
+}
+
+function setImmersive(on) {
+  document.body.classList.toggle('immersive', on);
+  dom.fullscreen.setAttribute('aria-pressed', on ? 'true' : 'false');
+  // The stage grows because the page frame and rail are gone, so the page has
+  // to be measured again.
+  requestAnimationFrame(() => {
+    if (state.doc) render();
+  });
+}
+
+function toggleFullscreen() {
+  const active = Boolean(document.fullscreenElement) || document.body.classList.contains('immersive');
+  if (active) {
+    if (document.fullscreenElement) {
+      document.exitFullscreen().catch(() => setImmersive(false));
+    } else {
+      setImmersive(false);
+    }
+    return;
+  }
+  // Real fullscreen is better, but it is blocked in iframes and some embedded
+  // webviews; the immersive class is the fallback that always works.
+  const target = document.documentElement;
+  if (target.requestFullscreen) {
+    target.requestFullscreen().catch(() => setImmersive(true));
+  } else {
+    setImmersive(true);
+  }
+}
+
+/* ------------------------------------------------------------------ *
+ * Failure paths
+ * ------------------------------------------------------------------ */
+
+function fail(message) {
+  show(dom.loading, false);
+  show(dom.spread, false);
+  show(dom.noPdf, false);
+  show(dom.error, true);
+  show(dom.hud, false);
+  dom.errorDetail.textContent = message;
+}
+
+function noPdf() {
+  show(dom.loading, false);
+  show(dom.spread, false);
+  show(dom.error, false);
+  show(dom.noPdf, true);
+  show(dom.hud, false);
+  dom.nopdfLink.href = 'book.html?slug=' + encodeURIComponent(slug);
+}
+
+/* ------------------------------------------------------------------ *
+ * Boot
+ * ------------------------------------------------------------------ */
+
+async function boot() {
+  if (!slug) {
+    fail('This page needs a book. Open one from the shelf.');
+    return;
+  }
+
+  dom.backLink.href = 'book.html?slug=' + encodeURIComponent(slug);
+
+  let book = null;
+  try {
+    const payload = await jsonFetch('/api/books/' + encodeURIComponent(slug));
+    book = payload.book;
+  } catch (err) {
+    fail(err.message);
+    return;
+  }
+
+  document.title = book.title + ' - Reader - PERPUS';
+  dom.title.textContent = book.title;
+  dom.author.textContent = book.author || '';
+
+  if (!book.pdfName) {
+    noPdf();
+    return;
+  }
+
+  // Notes and the saved position are independent of the PDF, so they load in
+  // parallel with the document instead of waiting for it.
+  const notesPromise = jsonFetch('/api/books/' + encodeURIComponent(slug) + '/notes')
+    .then((payload) => {
+      state.notes = payload.notes || [];
+      refreshNotes();
+    })
+    .catch((err) => console.warn('Notes unavailable:', err.message));
+
+  const progressPromise = jsonFetch('/api/books/' + encodeURIComponent(slug) + '/progress')
+    .then((payload) => payload.progress)
+    .catch(() => null);
+
+  try {
+    state.doc = await pdfjsLib.getDocument({
+      url: pageUrl(slug),
+      // A scanned book has one image per page; the worker can cache them.
+      isEvalSupported: false
+    }).promise;
+    state.numPages = state.doc.numPages;
+  } catch (err) {
+    fail(err && err.message ? err.message : 'The file could not be read.');
+    return;
+  }
+
+  show(dom.loading, false);
+  show(dom.spread, true);
+  show(dom.hud, true);
+
+  const progress = await progressPromise;
+  if (progress && Number.isInteger(progress.page)) {
+    state.page = clampPage(progress.page);
+    if (Number.isFinite(progress.zoom)) state.zoom = Math.min(250, Math.max(60, progress.zoom));
+    state.spread = Boolean(progress.spread);
+    if (state.spread && state.page % 2 === 0) state.page = Math.max(1, state.page - 1);
+  }
+
+  await notesPromise;
+  syncIndicators();
+  await render();
+}
+
+/* ------------------------------------------------------------------ *
+ * Wiring
+ * ------------------------------------------------------------------ */
+
+dom.prev.addEventListener('click', () => goTo(state.page - (state.spread ? 2 : 1)));
+dom.next.addEventListener('click', () => goTo(state.page + (state.spread ? 2 : 1)));
+dom.slider.addEventListener('input', () => goTo(dom.slider.value));
+dom.jump.addEventListener('change', () => goTo(dom.jump.value));
+dom.jump.addEventListener('keydown', (event) => {
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    goTo(dom.jump.value);
+    dom.jump.blur();
+  }
+});
+
+dom.zoomIn.addEventListener('click', () => stepZoom(1));
+dom.zoomOut.addEventListener('click', () => stepZoom(-1));
+dom.zoomReset.addEventListener('click', () => setZoom(100));
+
+dom.spreadSingle.addEventListener('click', () => setSpread(false));
+dom.spreadDouble.addEventListener('click', () => setSpread(true));
+
+dom.fullscreen.addEventListener('click', toggleFullscreen);
+document.addEventListener('fullscreenchange', () => {
+  const on = Boolean(document.fullscreenElement);
+  dom.fullscreen.setAttribute('aria-pressed', on ? 'true' : 'false');
+  dom.fullscreen.classList.toggle('text-coralText', on);
+  requestAnimationFrame(() => {
+    if (state.doc) render();
+  });
+});
+
+dom.panelToggle.addEventListener('click', () => setPanel(dom.panel.hidden));
+dom.panelClose.addEventListener('click', () => setPanel(false));
+
+dom.tabs.forEach((tab) => {
+  tab.addEventListener('click', () => {
+    state.filter = tab.dataset.filter;
+    syncTabs();
+    refreshNotes();
+  });
+});
+
+dom.noteSave.addEventListener('click', addNote);
+dom.noteInput.addEventListener('keydown', (event) => {
+  if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+    event.preventDefault();
+    addNote();
+  }
+});
+
+dom.highlighterBtn.addEventListener('click', (event) => {
+  event.stopPropagation();
+  setHighlighter(!state.highlighter);
+});
+
+dom.colorButtons.forEach((button) => {
+  button.addEventListener('click', (event) => {
+    event.stopPropagation();
+    state.color = button.dataset.color;
+    dom.colorButtons.forEach((other) => {
+      const active = other === button;
+      other.setAttribute('aria-pressed', active ? 'true' : 'false');
+      other.classList.toggle('border-2', active);
+      other.classList.toggle('border-coralText', active);
+      other.classList.toggle('border', !active);
+      other.classList.toggle('border-border', !active);
+    });
+  });
+});
+
+dom.bookmarkPage.addEventListener('click', togglePageBookmark);
+dom.hlDelete.addEventListener('click', deleteHighlight);
+
+document.addEventListener('click', (event) => {
+  if (!dom.hlMenu.contains(event.target)) closeHighlightMenu();
+  if (state.highlighter && !dom.colorPicker.contains(event.target) && !dom.highlighterBtn.contains(event.target)) {
+    // Clicking the page to draw must not close the picker, so only a click
+    // outside both the picker and the page closes it.
+    if (!event.target.closest('.hl-layer')) setHighlighter(false);
+  }
+});
+
+document.addEventListener('keydown', (event) => {
+  const tag = document.activeElement ? document.activeElement.tagName : '';
+  const typing = tag === 'INPUT' || tag === 'TEXTAREA';
+
+  if (event.key === 'Escape') {
+    if (!dom.hlMenu.hidden) {
+      closeHighlightMenu();
+      return;
+    }
+    if (state.highlighter) {
+      setHighlighter(false);
+      return;
+    }
+    if (document.body.classList.contains('immersive')) {
+      setImmersive(false);
+      return;
+    }
+    if (!dom.panel.hidden) {
+      setPanel(false);
+      return;
+    }
+    return;
+  }
+
+  if (typing) return;
+
+  const step = state.spread ? 2 : 1;
+  if (event.key === 'ArrowRight' || event.key === 'PageDown') {
+    event.preventDefault();
+    goTo(state.page + step);
+  } else if (event.key === 'ArrowLeft' || event.key === 'PageUp') {
+    event.preventDefault();
+    goTo(state.page - step);
+  } else if (event.key === 'Home') {
+    event.preventDefault();
+    goTo(1);
+  } else if (event.key === 'End') {
+    event.preventDefault();
+    goTo(state.numPages);
+  } else if (event.key === '+' || event.key === '=') {
+    event.preventDefault();
+    stepZoom(1);
+  } else if (event.key === '-') {
+    event.preventDefault();
+    stepZoom(-1);
+  } else if (event.key.toLowerCase() === 'f') {
+    event.preventDefault();
+    toggleFullscreen();
+  } else if (event.key.toLowerCase() === 'n') {
+    event.preventDefault();
+    setPanel(dom.panel.hidden);
+  } else if (event.key.toLowerCase() === 'h') {
+    event.preventDefault();
+    setHighlighter(!state.highlighter);
+  }
+});
+
+// Refit on resize: the page was sized for the old window. A ResizeObserver also
+// catches changes the window itself never sees (panel toggle, immersive mode,
+// devtools docking), which is why the element is observed instead of the window.
+let resizeTimer = null;
+let lastStageW = 0;
+let lastStageH = 0;
+
+const refitSoon = () => {
+  const w = Math.round(dom.stageScroll.clientWidth);
+  const h = Math.round(dom.stageScroll.clientHeight);
+  // A scrollbar appearing changes the client size by a few pixels and would
+  // otherwise bounce the page between two sizes forever, so small shifts are
+  // treated as noise.
+  if (Math.abs(w - lastStageW) < 3 && Math.abs(h - lastStageH) < 3) return;
+  lastStageW = w;
+  lastStageH = h;
+
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => {
+    // A fresh stage size deserves a fresh fit check, so the small-boot guard
+    // cannot run out during a long session.
+    state.fitFixes = 0;
+    // render() already queues itself while another paint is running, so it is
+    // safe to ask for a refit even mid-render.
+    if (state.doc) render();
+  }, 120);
+};
+
+if (typeof ResizeObserver === 'function') {
+  new ResizeObserver(refitSoon).observe(dom.stageScroll);
+}
+window.addEventListener('resize', () => {
+  // A resize also changes the height, which the observer catches, but resetting
+  // the cache keeps a same-size resize from being swallowed.
+  lastStageW = 0;
+  lastStageH = 0;
+  refitSoon();
+});
+
+// A tab that was in the background renders no frames, so its sizes can be stale
+// by the time the reader comes back.
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'visible') return;
+  lastStageW = 0;
+  lastStageH = 0;
+  refitSoon();
+});
+window.addEventListener('pageshow', () => {
+  lastStageW = 0;
+  lastStageH = 0;
+  refitSoon();
+});
+
+
+enableDrawing(dom.hlLeft);
+enableDrawing(dom.hlRight);
+
+boot().catch((err) => {
+  console.error(err);
+  fail(err && err.message ? err.message : 'Something went wrong while opening this book.');
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,699 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='5' fill='%23F4F1EA'/%3E%3Cpath d='M12 7v10M12 7c-2 0-3.5-1-4.5-1.5v9.5c1 .5 2.5 1.5 4.5 1.5M12 7c2 0 3.5-1 4.5-1.5v9.5c-1 .5-2.5 1.5-4.5 1.5' stroke='%23DC5B5B' stroke-width='1.6' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<title>Harry Potter: Half-Blood Prince - PERPUS</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,400&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<script src="https://cdn.tailwindcss.com?plugins=forms"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          cream: '#F4F1EA',
+          cardBg: '#EDEAE1',
+          lightCream: '#FAF9F5',
+          coral: '#DC5B5B',
+          coralDark: '#C74A4A',
+          coralText: '#B23C3C',
+          charcoal: '#1F2024',
+          secondary: '#68696E',
+          muted: '#6A6B70',
+          border: '#E4DFD5'
+        },
+        fontFamily: {
+          serif: ['"Cormorant Garamond"', 'Georgia', 'serif'],
+          sans: ['"Plus Jakarta Sans"', 'sans-serif']
+        },
+        boxShadow: {
+          book: '0 18px 30px -8px rgba(35, 30, 20, 0.28), 0 8px 12px -5px rgba(0, 0, 0, 0.1)',
+          bookHover: '0 24px 38px -10px rgba(35, 30, 20, 0.38), 0 10px 16px -6px rgba(0, 0, 0, 0.15)',
+          soft: '0 8px 24px -4px rgba(45, 40, 30, 0.05)'
+        }
+      }
+    }
+  }
+</script>
+
+<style>
+  html { -webkit-text-size-adjust: 100%; }
+
+  /* Tailwind's display utilities beat the browser's default [hidden] rule, so an
+     element with both `hidden` and `inline-flex` stays visible. This makes the
+     attribute mean what it says. */
+  [hidden] { display: none !important; }
+
+  /* Sidebar: idle is quiet, hover/focus turns coral, active page stays coral. */
+  .nav-item {
+    color: #68696E;
+    background: transparent;
+    cursor: pointer;
+    transition: color .18s ease, background-color .18s ease, transform .18s ease;
+  }
+  .nav-item:hover,
+  .nav-item:focus-visible {
+    color: #B23C3C;
+    background: rgba(220, 91, 91, 0.10);
+  }
+  .nav-item:active { transform: scale(0.94); }
+  .nav-item[aria-current="page"] {
+    color: #FFFFFF;
+    background: #C74A4A;
+    box-shadow: 0 6px 14px -6px rgba(199, 74, 74, 0.6);
+  }
+  .nav-item[aria-current="page"]:hover,
+  .nav-item[aria-current="page"]:focus-visible {
+    color: #FFFFFF;
+    background: #B23C3C;
+  }
+  .nav-item[aria-disabled="true"] { color: #A9A8A4; cursor: not-allowed; }
+  .nav-item[aria-disabled="true"]:hover { color: #A9A8A4; background: transparent; }
+
+  .brand-mark { color: #1F2024; transition: color .18s ease, transform .18s ease; }
+  .brand-mark:hover, .brand-mark:focus-visible { color: #B23C3C; transform: translateY(-1px); }
+
+  .custom-scroll::-webkit-scrollbar { height: 5px; width: 6px; }
+  .custom-scroll::-webkit-scrollbar-track { background: transparent; }
+  .custom-scroll::-webkit-scrollbar-thumb { background: #D9D4C7; border-radius: 9999px; }
+
+  .icon-btn {
+    min-width: 44px;
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+  }
+
+  /* 3D cover, drawn in CSS so the page never waits on a remote image. */
+  .big-cover {
+    position: relative;
+    aspect-ratio: 2 / 3;
+    border-radius: 4px 10px 10px 4px;
+    overflow: hidden;
+    box-shadow: -10px 18px 30px -8px rgba(0, 0, 0, 0.35), 0 25px 45px -12px rgba(28, 25, 23, 0.4);
+    transition: transform .3s ease, box-shadow .3s ease;
+  }
+  .big-cover::before {
+    content: '';
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 18px;
+    background: linear-gradient(90deg, rgba(255,255,255,0.22) 0%, rgba(0,0,0,0.22) 45%, rgba(255,255,255,0.05) 70%, transparent 100%);
+    z-index: 2;
+    pointer-events: none;
+  }
+  .big-cover::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(circle at 50% 42%, rgba(120, 220, 170, 0.18) 0%, transparent 60%);
+    pointer-events: none;
+  }
+  .big-cover:hover { transform: translateY(-4px); }
+
+  /* Same cover palettes as the shelf, so the detail page matches the card clicked. */
+  .c-beauty   { background: linear-gradient(180deg, #0A192F 0%, #0D2A4A 55%, #040D1A 100%); }
+  .c-fire     { background: linear-gradient(180deg, #C73E1D 0%, #630B0B 55%, #1A0505 100%); }
+  .c-narnia   { background: linear-gradient(180deg, #1B2B48 0%, #0F172A 60%, #080D19 100%); }
+  .c-deadpool { background: linear-gradient(180deg, #B32424 0%, #7D1616 55%, #450A0A 100%); }
+  .c-hp       { background: linear-gradient(180deg, #1E4D3D 0%, #123028 60%, #0A1A15 100%); }
+  .c-lost     { background: linear-gradient(180deg, #255242 0%, #163528 60%, #0C1F18 100%); }
+
+  /* Same tone as .c-plain on the shelf: a book added from a PDF has to look
+     like the same object on both pages. The dither rides in the background
+     stack rather than a ::after layer, because .big-cover::after already paints
+     the glow above this and a second pseudo-element would replace it. */
+  .c-plain {
+    background:
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)' opacity='0.05'/%3E%3C/svg%3E"),
+      radial-gradient(140% 110% at 50% 45%, rgba(0, 0, 0, 0) 52%, rgba(0, 0, 0, 0.28) 100%),
+      radial-gradient(115% 68% at 50% 30%, rgba(133, 171, 182, 0.20) 0%, rgba(133, 171, 182, 0.07) 44%, rgba(0, 0, 0, 0.20) 100%),
+      linear-gradient(180deg, #3E4550 0%, #2A303A 46%, #272D36 58%, #101419 100%);
+  }
+
+  .cover-inner {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 22px 18px 20px 26px;
+    text-align: center;
+    z-index: 1;
+  }
+
+  :focus-visible { outline: 2px solid #B23C3C; outline-offset: 3px; border-radius: 6px; }
+
+  /* Contrast: coral as text failed WCAG AA on cream, so text uses the darker
+     tone while fills and borders keep the lighter coral. */
+  body .text-coral,
+  body .hover\:text-coral:hover,
+  body .group:hover .group-hover\:text-coral { color: #B23C3C; }
+  body .placeholder-muted::placeholder { color: #6A6B70; opacity: 1; }
+
+  @media (max-height: 820px) {
+    .rail { padding-top: .9rem; padding-bottom: .9rem; }
+    .rail nav { gap: .1rem; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; }
+    html { scroll-behavior: auto !important; }
+  }
+</style>
+</head>
+
+<body class="bg-[#ECE7DC] text-charcoal font-sans antialiased min-h-screen p-3 md:p-6 lg:p-8 flex justify-center">
+
+<div class="w-full max-w-[1400px] h-[92vh] min-h-[640px] my-auto bg-cream rounded-[36px] shadow-2xl flex overflow-hidden border border-[#ded8cb]/80">
+
+  <!-- Sidebar: same rail as the home page, coral on hover -->
+  <aside aria-label="Main navigation" class="rail w-[78px] md:w-[88px] flex-shrink-0 bg-cream border-r border-border/70 flex flex-col items-center justify-between py-6 z-20 overflow-y-auto">
+    <div class="flex flex-col items-center">
+      <a class="brand-mark icon-btn w-11 h-11 rounded-xl" href="index.html" aria-label="PERPUS home">
+        <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M4 5.5A1.5 1.5 0 0 1 5.5 4H10a2 2 0 0 1 2 2v13a1.7 1.7 0 0 0-1.7-1.7H4z"></path>
+          <path d="M20 5.5A1.5 1.5 0 0 0 18.5 4H14a2 2 0 0 0-2 2v13a1.7 1.7 0 0 1 1.7-1.7H20z"></path>
+        </svg>
+      </a>
+    </div>
+
+    <nav aria-label="Primary" class="flex flex-col items-center gap-1.5">
+      <a class="nav-item w-11 h-11 rounded-2xl flex items-center justify-center" href="index.html" aria-label="Home">
+        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M3 10.5 12 3l9 7.5V20a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 20z"></path>
+          <path d="M9.5 21.5v-8h5v8"></path>
+        </svg>
+      </a>
+
+      <a class="nav-item w-11 h-11 rounded-2xl flex items-center justify-center" href="index.html#shelf" aria-current="page" aria-label="Library shelf">
+        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect x="4" y="4" width="16" height="16" rx="2"></rect>
+          <path d="M12 4v16"></path>
+        </svg>
+      </a>
+
+      <a class="nav-item w-11 h-11 rounded-2xl flex items-center justify-center" href="bookmarks.html" aria-label="Saved stories">
+        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path>
+        </svg>
+      </a>
+    </nav>
+
+    <div class="flex flex-col items-center">
+      <a class="nav-item icon-btn w-11 h-11 rounded-xl" href="add.html" aria-label="Add a book">
+        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M12 5v14"></path><path d="M5 12h14"></path>
+        </svg>
+      </a>
+    </div>
+  </aside>
+
+  <!-- Workspace -->
+  <div class="flex-1 flex flex-col h-full overflow-hidden bg-cream min-w-0">
+
+    <header class="px-6 md:pl-8 md:pr-[38px] pt-6 md:pt-7 pb-4 flex items-center justify-between gap-4 border-b border-border/40">
+      <div class="relative w-full max-w-md">
+        <span class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-secondary">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+            <circle cx="11" cy="11" r="7"></circle>
+            <path d="m21 21-4.35-4.35"></path>
+          </svg>
+        </span>
+        <label class="sr-only" for="search">Search books</label>
+        <input id="search" type="search" autocomplete="off"
+               class="w-full bg-transparent border-0 text-[13.5px] placeholder-muted pl-10 pr-4 py-3 focus:ring-0 focus:outline-none text-charcoal"
+               placeholder="Search books">
+      </div>
+
+      <div class="flex items-center gap-4 flex-shrink-0">
+        <a href="index.html#shelf" class="hidden sm:inline-flex items-center gap-1.5 min-h-[44px] text-xs text-secondary hover:text-coral transition-colors">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M19 12H5M12 19l-7-7 7-7"></path>
+          </svg>
+          Back to shelf
+        </a>
+      </div>
+    </header>
+
+    <main class="flex-1 overflow-y-auto custom-scroll px-6 md:px-8 py-6 pb-10 [scrollbar-gutter:stable]">
+
+      <!-- Hero: cover and record. Every value is painted by books.js from ?slug= -->
+      <section aria-labelledby="book-title" class="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-start">
+        <div class="lg:col-span-5 xl:col-span-4 flex justify-center lg:justify-start">
+          <div id="book-cover" class="big-cover w-[210px] sm:w-[250px] lg:w-full max-w-[280px]">
+            <div id="cover-inner" class="cover-inner"></div>
+          </div>
+        </div>
+
+        <div class="lg:col-span-7 xl:col-span-8 space-y-6">
+          <div class="space-y-3">
+            <div class="flex flex-wrap items-center gap-2">
+              <span id="book-badge" class="text-[10px] font-semibold tracking-wide uppercase px-2.5 py-0.5 bg-[#EAE6DB] rounded-full text-charcoal/80"></span>
+              <span id="book-state" class="text-[10px] font-semibold tracking-wide uppercase px-2.5 py-0.5 rounded-full bg-[#F3E2E0] text-[#A83636]"></span>
+            </div>
+            <h1 id="book-title" class="font-serif text-3xl sm:text-4xl lg:text-[46px] leading-tight font-semibold tracking-tight"></h1>
+            <p id="book-author" class="text-sm font-semibold tracking-wide"></p>
+            <p id="book-blurb" class="text-sm text-secondary max-w-lg leading-relaxed"></p>
+          </div>
+
+          <!-- Progress: only rendered for the book actually being read -->
+          <div id="progress-card" class="bg-lightCream/80 border border-border/60 rounded-2xl p-4 sm:p-5 space-y-3 hidden">
+            <div class="flex items-center justify-between text-xs font-medium">
+              <span>Your progress</span>
+              <span id="progress-percent" class="font-semibold text-coral"></span>
+            </div>
+            <div id="progress-bar" class="w-full h-2 bg-[#E5E0D5] rounded-full overflow-hidden" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-label="Reading progress">
+              <div id="progress-fill" class="h-full bg-coral rounded-full" style="width: 0%"></div>
+            </div>
+            <div class="flex items-center justify-between gap-3 text-[11px] text-secondary">
+              <span id="progress-chapter"></span>
+              <span id="progress-page"></span>
+            </div>
+          </div>
+
+          <!-- Actions -->
+          <div class="flex flex-wrap items-center gap-3">
+            <button type="button" id="reader-btn" disabled aria-disabled="true"
+                    class="inline-flex items-center justify-center gap-2 min-h-[44px] px-5 rounded-full bg-[#E5E0D5] text-secondary text-xs font-medium cursor-not-allowed"
+                    title="Add a PDF to this book to read it here">
+              <span>Read this book</span>
+              <span class="text-[10px] uppercase tracking-wider opacity-70">no file</span>
+            </button>
+
+            <button type="button" id="bookmark-btn" aria-pressed="false"
+                    class="inline-flex items-center justify-center gap-2 min-h-[44px] px-5 rounded-full border border-border bg-white/70 text-xs font-medium text-charcoal hover:border-coral/50 hover:text-coral transition-colors">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path>
+              </svg>
+              <span id="bookmark-label">Save to bookmarks</span>
+            </button>
+
+            <a href="index.html#shelf"
+               class="inline-flex items-center justify-center gap-2 min-h-[44px] px-5 rounded-full border border-border bg-white/70 text-xs font-medium text-charcoal hover:border-coral/50 hover:text-coral transition-colors">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M19 12H5"></path><path d="M12 19l-7-7 7-7"></path>
+              </svg>
+              <span>Find another book</span>
+            </a>
+
+            <!-- Hidden until the page knows the book is removable: the eight drawn
+                 books are refused by the server, so showing the button would offer
+                 an action that always fails. -->
+            <button type="button" id="delete-btn" hidden
+                    class="inline-flex items-center justify-center gap-2 min-h-[44px] px-5 rounded-full border border-border bg-white/70 text-xs font-medium text-charcoal hover:border-coral/50 hover:text-coral transition-colors">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M4 7h16"></path><path d="M9 7V5h6v2"></path><path d="M6 7l1 13h10l1-13"></path>
+              </svg>
+              <span>Delete this book</span>
+            </button>
+          </div>
+          <p id="bookmark-status" class="text-[11px] text-coral min-h-[16px]" role="status" aria-live="polite"></p>
+
+          <!-- Deleting a book cannot be undone, so it asks first and says exactly
+               what goes with it. -->
+          <div id="delete-panel" hidden class="mt-3 rounded-2xl border border-coralText/25 bg-coralText/5 p-3.5">
+            <p class="text-xs font-medium text-charcoal">Delete this book from the shelf?</p>
+            <p id="delete-note" class="text-[11px] text-secondary leading-relaxed mt-1"></p>
+            <div class="flex flex-wrap items-center gap-2 mt-3">
+              <button type="button" id="delete-confirm"
+                      class="inline-flex items-center justify-center min-h-[44px] px-4 rounded-full bg-coralText text-white text-xs font-semibold">
+                Yes, delete it
+              </button>
+              <button type="button" id="delete-cancel"
+                      class="inline-flex items-center justify-center min-h-[44px] px-4 rounded-full border border-border/70 text-xs font-medium text-charcoal">
+                Keep it
+              </button>
+            </div>
+            <p id="delete-status" class="text-[11px] text-coralText mt-2 min-h-[14px]" role="status" aria-live="polite"></p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Record -->
+      <section aria-labelledby="record-title" class="mt-10 bg-lightCream border border-border/70 rounded-3xl p-6 sm:p-8">
+        <div class="grid grid-cols-1 md:grid-cols-12 gap-8 lg:gap-12">
+          <div class="md:col-span-7 space-y-6">
+            <div>
+              <h2 id="record-title" class="text-sm font-bold tracking-tight mb-3">About this book</h2>
+              <div class="text-[13px] leading-relaxed text-secondary space-y-3">
+                <p id="about-1"></p>
+                <p id="about-2"></p>
+              </div>
+            </div>
+
+            <div id="note-block" class="pt-1 hidden">
+              <h2 class="text-xs font-bold tracking-tight mb-2">Your note</h2>
+              <div class="flex items-start gap-3 bg-white/70 border border-border/60 rounded-xl p-4">
+                <div class="w-8 h-8 rounded-full bg-charcoal text-cream flex items-center justify-center text-[10px] font-semibold flex-shrink-0" aria-hidden="true">AM</div>
+                <p id="note-text" class="text-xs text-secondary italic leading-relaxed"></p>
+              </div>
+            </div>
+          </div>
+
+          <div class="md:col-span-5 space-y-5">
+            <div>
+              <h2 class="text-xs font-bold tracking-tight mb-1.5">Author</h2>
+              <p id="meta-author" class="text-xs text-secondary leading-relaxed"></p>
+            </div>
+            <div>
+              <h2 class="text-xs font-bold tracking-tight mb-1.5">Series</h2>
+              <p id="meta-series" class="text-xs text-secondary leading-relaxed"></p>
+            </div>
+            <div>
+              <h2 class="text-xs font-bold tracking-tight mb-1.5">Language</h2>
+              <p class="text-xs text-secondary leading-relaxed">English</p>
+            </div>
+            <div>
+              <h2 class="text-xs font-bold tracking-tight mb-1.5">Edition record</h2>
+              <p id="meta-edition" class="text-xs text-secondary leading-relaxed"></p>
+              <p class="mt-2 inline-flex items-center gap-1.5 text-[10px] font-medium text-secondary bg-[#EAE6DB] px-2 py-1 rounded">
+                <span class="w-1.5 h-1.5 rounded-full bg-coral flex-shrink-0" aria-hidden="true"></span>
+                ISBN and publisher details are placeholders until the library record is filled in
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Shelf shortcut: three books that are not the one on screen -->
+      <section aria-labelledby="more-title" class="mt-8">
+        <div class="flex items-center justify-between gap-4 mb-3">
+          <h2 id="more-title" class="font-serif text-xl font-bold tracking-tight">Keep browsing</h2>
+          <a href="index.html#shelf" class="inline-flex items-center min-h-[44px] text-xs font-medium text-charcoal hover:text-coral transition-colors">All shelves</a>
+        </div>
+        <div id="related" class="grid grid-cols-1 sm:grid-cols-3 gap-4"></div>
+      </section>
+    </main>
+
+    <footer class="h-11 px-6 md:pl-8 md:pr-[38px] border-t border-border/60 flex items-center justify-between gap-4 text-xs text-secondary bg-cream/90 flex-shrink-0">
+      <div class="flex items-center gap-2 min-w-0">
+        <span class="w-2 h-2 rounded-full bg-coral flex-shrink-0" aria-hidden="true"></span>
+        <p id="footer-series" class="text-[11.5px] truncate"></p>
+      </div>
+      <div class="font-medium text-[11.5px] text-charcoal flex-shrink-0">
+        <span id="footer-page" class="text-coral font-semibold"></span> <span id="footer-sep">/</span> <span id="footer-pages"></span>
+      </div>
+    </footer>
+  </div>
+</div>
+
+<script src="books.js"></script>
+<script src="saved.js"></script>
+<script>
+(function () {
+  // The shelf is fetched from /api/books, so nothing can be read until that
+  // request settles. Everything below used to run immediately.
+  var books = window.PerpusBooks;
+  if (!books) return;
+
+  books.ready.then(function (loaded) {
+    if (!loaded) {
+      document.title = 'Shelf unavailable - PERPUS';
+      var state = document.getElementById('book-state');
+      if (state) state.textContent = 'Shelf unavailable';
+      var title = document.getElementById('book-title');
+      if (title) title.textContent = 'The shelf could not be loaded';
+      var blurb = document.getElementById('book-blurb');
+      if (blurb) {
+        blurb.textContent =
+          'The book list is served by the local server. Start it with "npm start" in the project folder, then reload this page.';
+      }
+      var author = document.getElementById('book-author');
+      if (author) author.textContent = '';
+      var related = document.getElementById('related');
+      if (related) related.textContent = '';
+      return;
+    }
+
+    var book = books.current();
+    if (!book) return;
+    renderBook(book);
+  });
+
+  function renderBook(book) {
+  /* ---- cover ---- */
+  var cover = document.getElementById('book-cover');
+  cover.className = 'big-cover w-[210px] sm:w-[250px] lg:w-full max-w-[280px] ' + book.cover;
+
+  var inner = document.getElementById('cover-inner');
+  var frag = document.createDocumentFragment();
+
+  var kicker = document.createElement('p');
+  kicker.className = 'text-[9px] uppercase tracking-[0.28em] text-white/70';
+  kicker.textContent = book.kicker;
+  frag.appendChild(kicker);
+
+  var mid = document.createElement('div');
+  var l1 = document.createElement('p');
+  l1.className = 'font-serif text-2xl leading-tight text-white/95';
+  l1.textContent = book.line1;
+  mid.appendChild(l1);
+  if (book.line2) {
+    var l2 = document.createElement('p');
+    l2.className = 'font-serif italic text-xs text-white/80 py-1';
+    l2.textContent = book.line2;
+    mid.appendChild(l2);
+  }
+  if (book.line3) {
+    var l3 = document.createElement('p');
+    l3.className = 'font-serif text-2xl leading-tight text-white/95';
+    l3.textContent = book.line3;
+    mid.appendChild(l3);
+  }
+  frag.appendChild(mid);
+
+  var foot = document.createElement('div');
+  foot.className = 'space-y-2';
+  var rule = document.createElement('div');
+  rule.className = 'w-8 h-px bg-white/30 mx-auto';
+  foot.appendChild(rule);
+  var ca = document.createElement('p');
+  ca.className = 'text-[9px] uppercase tracking-[0.24em] text-white/70';
+  ca.textContent = book.coverAuthor;
+  foot.appendChild(ca);
+  frag.appendChild(foot);
+
+  inner.textContent = '';
+  inner.appendChild(frag);
+
+  /* ---- record ---- */
+  document.title = book.title + ' - PERPUS';
+  // Chip shows the category; the badge text repeated the series line below it.
+  document.getElementById('book-badge').textContent = book.cat;
+  var state = document.getElementById('book-state');
+  state.textContent = book.progress ? 'Reading now' : 'On the shelf';
+  document.getElementById('book-title').textContent = book.title;
+  document.getElementById('book-author').textContent = book.author;
+  document.getElementById('book-blurb').textContent = book.blurb;
+  // The hero already carries blurb, so the About card adds something new.
+  var aboutLead = document.getElementById('about-1');
+  if (book.blurb2) {
+    aboutLead.textContent = book.blurb2;
+  } else {
+    aboutLead.remove();
+  }
+  var aboutExtra = document.getElementById('about-2');
+  if (aboutExtra) aboutExtra.remove();
+
+  document.getElementById('meta-author').textContent = book.author;
+  document.getElementById('meta-series').textContent = book.series;
+  document.getElementById('meta-edition').textContent = book.edition;
+
+  if (book.note) {
+    document.getElementById('note-text').textContent = book.note;
+    document.getElementById('note-block').classList.remove('hidden');
+  }
+
+  /* ---- progress: only the book actually being read has one ---- */
+  if (book.progress) {
+    var pc = document.getElementById('progress-card');
+    pc.classList.remove('hidden');
+    document.getElementById('progress-percent').textContent = book.progress.percent + '%';
+    document.getElementById('progress-fill').style.width = book.progress.percent + '%';
+    document.getElementById('progress-bar').setAttribute('aria-valuenow', String(book.progress.percent));
+    document.getElementById('progress-chapter').textContent = book.progress.chapter;
+    document.getElementById('progress-page').textContent = 'Page ' + book.progress.page + ' of ' + book.pages;
+  }
+
+  /* ---- footer ---- */
+  // Status bar: reading state, not a third copy of the series line.
+  document.getElementById('footer-series').textContent = book.progress
+    ? 'Reading in progress.'
+    : 'Nothing read yet.';
+  var footerPage = document.getElementById('footer-page');
+  var footerPages = document.getElementById('footer-pages');
+  if (book.progress) {
+    footerPage.textContent = String(book.progress.page);
+    footerPages.textContent = String(book.pages);
+  } else {
+    // Nothing started yet, so there is no current page to show. A book created
+    // without a page count would otherwise print the literal "null pages".
+    footerPage.textContent = book.pages ? book.pages + ' pages' : '';
+    footerPages.textContent = '';
+    document.getElementById('footer-sep').textContent = '';
+    footerPage.classList.remove('text-coral', 'font-semibold');
+  }
+
+  /* ---- keep browsing: three other books, real links ---- */
+  var related = document.getElementById('related');
+  books.order().filter(function (slug) { return slug !== book.slug; }).slice(0, 3).forEach(function (slug) {
+    var other = books.get(slug);
+    var a = document.createElement('a');
+    a.href = books.url(slug);
+    a.className = 'group bg-lightCream/70 border border-border/60 rounded-2xl p-4 hover:border-border transition-colors';
+
+    var cat = document.createElement('p');
+    cat.className = 'text-[10px] uppercase tracking-wider text-secondary font-medium';
+    cat.textContent = other.cat;
+
+    var name = document.createElement('p');
+    name.className = 'font-serif text-base font-bold mt-1 group-hover:text-coral transition-colors';
+    name.textContent = other.title;
+
+    var auth = document.createElement('p');
+    auth.className = 'text-[11px] text-secondary';
+    auth.textContent = other.author;
+
+    a.appendChild(cat);
+    a.appendChild(name);
+    a.appendChild(auth);
+    related.appendChild(a);
+  });
+
+    /* ---- reader button ---- */
+    // The button is a real control only when the book has a PDF. Without one it
+    // stays the disabled "soon" state rather than becoming a dead link.
+    var readerBtn = document.getElementById('reader-btn');
+    if (readerBtn) {
+      if (book.pdfName) {
+        readerBtn.disabled = false;
+        readerBtn.removeAttribute('aria-disabled');
+        readerBtn.removeAttribute('title');
+        readerBtn.classList.remove('bg-[#E5E0D5]', 'text-secondary', 'cursor-not-allowed');
+        readerBtn.classList.add('bg-coralDark', 'text-white');
+        readerBtn.innerHTML = '';
+        var readLabel = document.createElement('span');
+        readLabel.textContent = 'Read this book';
+        readerBtn.appendChild(readLabel);
+        readerBtn.addEventListener('click', function () {
+          location.href = 'reader.html?slug=' + encodeURIComponent(book.slug);
+        });
+      }
+    }
+
+    /* ---- delete button ---- */
+    // Only books added later can be deleted; the eight drawn books are refused by
+    // the server, so the button stays hidden for them instead of failing on click.
+    var deleteBtn = document.getElementById('delete-btn');
+    var deletePanel = document.getElementById('delete-panel');
+    var deleteConfirm = document.getElementById('delete-confirm');
+    var deleteCancel = document.getElementById('delete-cancel');
+    var deleteNote = document.getElementById('delete-note');
+    var deleteStatus = document.getElementById('delete-status');
+
+    if (deleteBtn && book.deletable) {
+      deleteBtn.hidden = false;
+
+      var extras = [];
+      if (book.pdfName) extras.push('its PDF');
+      extras.push('its bookmark, if you saved it');
+      deleteNote.textContent = 'This removes "' + book.title + '" from the shelf for good, along with ' +
+        extras.join(' and ') + '. It cannot be undone.';
+
+      deleteBtn.addEventListener('click', function () {
+        deletePanel.hidden = false;
+        deleteConfirm.focus();
+      });
+
+      deleteCancel.addEventListener('click', function () {
+        deletePanel.hidden = true;
+        deleteBtn.focus();
+      });
+
+      // Escape is the usual way out of a confirmation the user opened by accident.
+      document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape' && !deletePanel.hidden) {
+          deletePanel.hidden = true;
+          deleteBtn.focus();
+        }
+      });
+
+      deleteConfirm.addEventListener('click', function () {
+        deleteConfirm.disabled = true;
+        deleteCancel.disabled = true;
+        deleteConfirm.textContent = 'Deleting...';
+        deleteStatus.textContent = '';
+
+        fetch('/api/books/' + encodeURIComponent(book.slug), { method: 'DELETE' })
+          .then(function (res) {
+            return res.json().then(function (body) {
+              if (!res.ok) throw new Error(body.error || 'The book could not be deleted.');
+              return body;
+            });
+          })
+          .then(function () {
+            // The shelf is the only place left to go: this page now describes a book
+            // that no longer exists.
+            window.location.href = 'index.html#shelf';
+          })
+          .catch(function (err) {
+            deleteConfirm.disabled = false;
+            deleteCancel.disabled = false;
+            deleteConfirm.textContent = 'Yes, delete it';
+            deleteStatus.textContent = err.message;
+          });
+      });
+    }
+
+    /* ---- bookmark button ---- */
+    // This lives inside renderBook because it needs the book record, which only
+    // exists once the shelf request has settled.
+    var btn = document.getElementById('bookmark-btn');
+    var label = document.getElementById('bookmark-label');
+    var status = document.getElementById('bookmark-status');
+    var store = window.PerpusSaved;
+
+    function paint(on) {
+    btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    btn.classList.toggle('text-coral', on);
+    btn.classList.toggle('border-coral/50', on);
+    label.textContent = on ? 'Saved to bookmarks' : 'Save to bookmarks';
+    btn.querySelector('svg').setAttribute('fill', on ? 'currentColor' : 'none');
+  }
+
+    if (!store || !store.available()) {
+      btn.disabled = true;
+      btn.classList.add('opacity-50', 'cursor-not-allowed');
+      btn.setAttribute('aria-label', 'Bookmarks unavailable in this browser');
+      status.textContent = 'This browser blocks local storage, so bookmarks cannot be kept.';
+      return;
+    }
+
+    var entry = {
+      slug: book.slug,
+      title: book.title,
+      author: book.author,
+      cat: book.cat,
+      cover: book.cover,
+      series: book.series
+    };
+
+    paint(store.has(book.slug));
+
+    btn.addEventListener('click', function () {
+      var on = store.toggle(entry);
+      paint(on);
+    });
+  } // end renderBook
+})();
+</script>
+</body>
+</html>

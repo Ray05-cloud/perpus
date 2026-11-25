@@ -1,0 +1,793 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='5' fill='%23F4F1EA'/%3E%3Cpath d='M12 7v10M12 7c-2 0-3.5-1-4.5-1.5v9.5c1 .5 2.5 1.5 4.5 1.5M12 7c2 0 3.5-1 4.5-1.5v9.5c-1 .5-2.5 1.5-4.5 1.5' stroke='%23DC5B5B' stroke-width='1.6' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<title>PERPUS - Reading Room</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,400&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<script src="https://cdn.tailwindcss.com?plugins=forms"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          cream: '#F4F1EA',
+          cardBg: '#EDEAE1',
+          lightCream: '#FAF9F5',
+          coral: '#DC5B5B',
+          coralDark: '#C74A4A',
+          coralText: '#B23C3C',
+          charcoal: '#1F2024',
+          secondary: '#68696E',
+          muted: '#6A6B70',
+          border: '#E4DFD5'
+        },
+        fontFamily: {
+          serif: ['"Cormorant Garamond"', 'Georgia', 'serif'],
+          sans: ['"Plus Jakarta Sans"', 'sans-serif']
+        },
+        boxShadow: {
+          book: '0 18px 30px -8px rgba(35, 30, 20, 0.28), 0 8px 12px -5px rgba(0, 0, 0, 0.1)',
+          bookHover: '0 24px 38px -10px rgba(35, 30, 20, 0.38), 0 10px 16px -6px rgba(0, 0, 0, 0.15)',
+          soft: '0 8px 24px -4px rgba(45, 40, 30, 0.05)'
+        }
+      }
+    }
+  }
+</script>
+
+<style>
+  html { -webkit-text-size-adjust: 100%; }
+
+  /* Sidebar: idle is quiet, hover/focus turns coral, active page stays coral. */
+  .nav-item {
+    color: #68696E;
+    background: transparent;
+    cursor: pointer;
+    transition: color .18s ease, background-color .18s ease, transform .18s ease;
+  }
+  .nav-item:hover,
+  .nav-item:focus-visible {
+    color: #B23C3C;
+    background: rgba(220, 91, 91, 0.10);
+  }
+  .nav-item:active { transform: scale(0.94); }
+  .nav-item[aria-current="page"] {
+    color: #FFFFFF;
+    background: #C74A4A;
+    box-shadow: 0 6px 14px -6px rgba(199, 74, 74, 0.6);
+  }
+  .nav-item[aria-current="page"]:hover,
+  .nav-item[aria-current="page"]:focus-visible {
+    color: #FFFFFF;
+    background: #B23C3C;
+  }
+  .nav-item[aria-disabled="true"] { color: #A9A8A4; cursor: not-allowed; }
+  .nav-item[aria-disabled="true"]:hover { color: #A9A8A4; background: transparent; }
+
+  /* Same hover language as the sidebar: coral text on a 10% coral wash. Reused by
+     the genre pills and the shelf entry button so the whole page answers a pointer
+     the same way. */
+  .hover-nav {
+    transition: color .18s ease, background-color .18s ease, border-color .18s ease, transform .18s ease;
+  }
+  .hover-nav:hover,
+  .hover-nav:focus-visible {
+    color: #B23C3C;
+    background: rgba(220, 91, 91, 0.10);
+    border-color: rgba(220, 91, 91, 0.45);
+  }
+  .hover-nav:active { transform: scale(0.97); }
+
+  /* A pressed genre is the current state, like the active sidebar item: it keeps its
+     filled look on hover instead of flashing the coral wash. */
+  .filter-pill[aria-pressed="true"],
+  .filter-pill[aria-pressed="true"]:hover,
+  .filter-pill[aria-pressed="true"]:focus-visible {
+    color: #FFFFFF;
+    background: #C74A4A;
+    border-color: #C74A4A;
+    box-shadow: 0 6px 14px -6px rgba(199, 74, 74, 0.6);
+    transform: none;
+  }
+  .filter-pill[aria-pressed="true"]:hover,
+  .filter-pill[aria-pressed="true"]:focus-visible {
+    background: #B23C3C;
+    border-color: #B23C3C;
+  }
+
+  .brand-mark { color: #1F2024; transition: color .18s ease, transform .18s ease; }
+  .brand-mark:hover, .brand-mark:focus-visible { color: #B23C3C; transform: translateY(-1px); }
+
+  .custom-scroll::-webkit-scrollbar { height: 5px; width: 6px; }
+  .custom-scroll::-webkit-scrollbar-track { background: transparent; }
+  .custom-scroll::-webkit-scrollbar-thumb { background: #D9D4C7; border-radius: 9999px; }
+  .custom-scroll::-webkit-scrollbar-thumb:hover { background: #BCB6A7; }
+
+  /* The workspace rail is only drawn while the column is actually moving. The gutter
+     stays reserved ([scrollbar-gutter:stable] on <main>), so hiding the thumb never
+     shifts the header edge or the content width. */
+  .auto-rail::-webkit-scrollbar { width: 6px; }
+  .auto-rail::-webkit-scrollbar-track { background: transparent; }
+  .auto-rail::-webkit-scrollbar-thumb {
+    background: transparent;
+    border-radius: 9999px;
+    transition: background-color .25s ease;
+  }
+  .auto-rail.is-scrolling::-webkit-scrollbar-thumb { background: #D9D4C7; }
+  .auto-rail.is-scrolling::-webkit-scrollbar-thumb:hover { background: #BCB6A7; }
+
+  /* Firefox has no ::-webkit-scrollbar, so it needs the standard properties. Guarded
+     because setting scrollbar-color in Chromium disables the webkit pseudo-elements
+     above and would swap the 6px rail for the native one. */
+  @supports (-moz-appearance: none) {
+    .auto-rail { scrollbar-color: transparent transparent; }
+    .auto-rail.is-scrolling { scrollbar-color: #D9D4C7 transparent; }
+  }
+
+  /* Book covers are drawn in CSS so the shelf never depends on remote images */
+  .cover {
+    position: relative;
+    aspect-ratio: 1 / 1.45;
+    border-radius: 6px;
+    overflow: hidden;
+    box-shadow: 0 18px 30px -8px rgba(35, 30, 20, 0.28), 0 8px 12px -5px rgba(0, 0, 0, 0.10);
+    transition: box-shadow .3s ease, transform .3s ease;
+  }
+  .cover::after {
+    content: '';
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 13px;
+    background: linear-gradient(90deg, rgba(255,255,255,0.28) 0%, rgba(255,255,255,0.03) 40%, rgba(0,0,0,0.22) 100%);
+    pointer-events: none;
+  }
+  .cover-inner {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 14px;
+    text-align: center;
+  }
+  .book-card:hover .cover,
+  .book-card:focus-visible .cover {
+    transform: translateY(-6px);
+    box-shadow: 0 26px 40px -10px rgba(35, 30, 20, 0.38), 0 12px 18px -6px rgba(0, 0, 0, 0.15);
+  }
+
+  .c-beauty   { background: linear-gradient(180deg, #0A192F 0%, #0D2A4A 55%, #040D1A 100%); }
+  .c-fire     { background: linear-gradient(180deg, #C73E1D 0%, #630B0B 55%, #1A0505 100%); }
+  .c-narnia   { background: linear-gradient(180deg, #1B2B48 0%, #0F172A 60%, #080D19 100%); }
+  .c-deadpool { background: linear-gradient(180deg, #B32424 0%, #7D1616 55%, #450A0A 100%); }
+  .c-hp       { background: linear-gradient(180deg, #1E4D3D 0%, #123028 60%, #0A1A15 100%); }
+  .c-lost     { background: linear-gradient(180deg, #255242 0%, #163528 60%, #0C1F18 100%); }
+
+  /* Books added from a PDF have no hand-drawn cover, so they get this tone
+     instead of a picture. It is a neutral graphite, so it reads as a separate
+     book on the shelf while still belonging to the same set: the three-stop
+     ramp, the soft sheen at the top and the vignette are the same lighting
+     recipe the drawn covers use. Three gradients, not one flat fill, so the
+     board has depth. */
+  .c-plain {
+    background:
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)' opacity='0.05'/%3E%3C/svg%3E"),
+      radial-gradient(140% 110% at 50% 45%, rgba(0, 0, 0, 0) 52%, rgba(0, 0, 0, 0.28) 100%),
+      radial-gradient(115% 68% at 50% 30%, rgba(133, 171, 182, 0.20) 0%, rgba(133, 171, 182, 0.07) 44%, rgba(0, 0, 0, 0.20) 100%),
+      linear-gradient(180deg, #3E4550 0%, #2A303A 46%, #272D36 58%, #101419 100%);
+  }
+
+  /* Shelf cards size themselves. Above 770px of viewport the whole shelf has to
+     land above the status bar, so each tier shrinks the row and the rhythm
+     together (ordered widest to smallest). Below that the window is too short to
+     hold hero plus a legible cover row, so the column scrolls (scrollbar-gutter is
+     reserved, so the rail is always visible) instead of shrinking covers into
+     unreadable stamps. */
+  .book-card { width: 150px; }
+  @media (min-width: 640px) { .book-card { width: 168px; } }
+
+  @media (min-width: 1024px) and (max-height: 960px) {
+    .book-card { width: 150px; }
+  }
+  @media (min-width: 1024px) and (max-height: 880px) {
+    .book-card { width: 136px; }
+    .shelf { gap: 1.25rem; }
+    main.workspace-main { padding-top: 1rem; padding-bottom: 1.25rem; row-gap: 1rem; }
+    #hero-section { row-gap: 1rem; }
+  }
+  @media (min-width: 1024px) and (max-height: 820px) {
+    .book-card { width: 118px; }
+    /* .9rem left the column 1px short at 1280x800 (sub-pixel rounding of the 14.4px
+       bottom padding), so the value is a whole 8px here. */
+    main.workspace-main { padding-bottom: .5rem; }
+  }
+  @media (min-width: 1024px) and (max-height: 790px) {
+    .book-card { width: 104px; }
+    #welcome-heading { font-size: 30px; }
+    main.workspace-main { padding-bottom: .375rem; row-gap: .8rem; }
+  }
+  @media (min-width: 1024px) and (max-height: 769px) {
+    #welcome-sub { display: none; }
+    .shelf { gap: 1rem; }
+  }
+
+  .shelf { scroll-snap-type: x proximity; }
+  .shelf > * { scroll-snap-align: start; }
+
+  /* Icon buttons keep a 44px hit area; the visible circle inside can stay small. */
+  .icon-btn {
+    min-width: 44px;
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+  }
+  .icon-btn:disabled {
+    cursor: default;
+    opacity: .35;
+    color: var(--color-secondary, #68696E);
+  }
+
+  /* Short viewports: tighten the rail so every icon stays reachable. */
+  @media (max-height: 820px) {
+    .rail { padding-top: .9rem; padding-bottom: .9rem; }
+    .rail nav { gap: .1rem; }
+  }
+
+  /* Contrast: coral as text failed WCAG AA on cream, so text uses the darker
+     tone while fills and borders keep the lighter coral. */
+  body .text-coral,
+  body .hover\:text-coral:hover,
+  body .group:hover .group-hover\:text-coral { color: #B23C3C; }
+  body .placeholder-muted::placeholder { color: #6A6B70; opacity: 1; }
+
+  :focus-visible { outline: 2px solid #B23C3C; outline-offset: 3px; border-radius: 6px; }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; }
+    html { scroll-behavior: auto !important; }
+  }
+</style>
+</head>
+
+<body class="bg-[#ECE7DC] text-charcoal font-sans antialiased min-h-screen p-3 md:p-6 lg:p-8 flex justify-center">
+
+<div class="w-full max-w-[1400px] h-[92vh] min-h-[640px] my-auto bg-cream rounded-[36px] shadow-2xl flex overflow-hidden border border-[#ded8cb]/80">
+
+  <!-- Sidebar: persistent on every page, coral on hover -->
+  <aside aria-label="Main navigation" class="rail w-[78px] md:w-[88px] flex-shrink-0 bg-cream border-r border-border/70 flex flex-col items-center justify-between py-6 z-20 overflow-y-auto">
+    <div class="flex flex-col items-center">
+      <a class="brand-mark icon-btn w-11 h-11 rounded-xl" href="index.html" aria-label="PERPUS home">
+        <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M4 5.5A1.5 1.5 0 0 1 5.5 4H10a2 2 0 0 1 2 2v13a1.7 1.7 0 0 0-1.7-1.7H4z"></path>
+          <path d="M20 5.5A1.5 1.5 0 0 0 18.5 4H14a2 2 0 0 0-2 2v13a1.7 1.7 0 0 1 1.7-1.7H20z"></path>
+        </svg>
+      </a>
+    </div>
+
+    <nav aria-label="Primary" class="flex flex-col items-center gap-1.5">
+      <a class="nav-item w-11 h-11 rounded-2xl flex items-center justify-center" href="index.html" aria-current="page" aria-label="Home">
+        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M3 10.5 12 3l9 7.5V20a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 20z"></path>
+          <path d="M9.5 21.5v-8h5v8"></path>
+        </svg>
+      </a>
+
+      <a class="nav-item w-11 h-11 rounded-2xl flex items-center justify-center" href="#shelf" aria-label="Library shelf">
+        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect x="4" y="4" width="16" height="16" rx="2"></rect>
+          <path d="M12 4v16"></path>
+        </svg>
+      </a>
+
+      <a class="nav-item w-11 h-11 rounded-2xl flex items-center justify-center" href="bookmarks.html" aria-label="Saved stories">
+        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path>
+        </svg>
+      </a>
+    </nav>
+
+    <div class="flex flex-col items-center">
+      <button class="nav-item icon-btn w-11 h-11 rounded-xl" type="button" aria-label="Jump to the shelf" onclick="document.getElementById('shelf').scrollIntoView({behavior:'smooth', block:'center'})">
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+          <path d="M4 7h16M4 12h10M4 17h6"></path>
+        </svg>
+      </button>
+    </div>
+  </aside>
+
+  <!-- Workspace -->
+  <div class="flex-1 flex flex-col h-full overflow-hidden bg-cream min-w-0">
+
+    <header class="px-6 md:pl-8 md:pr-[38px] pt-6 md:pt-7 pb-4 flex items-center justify-between gap-4 border-b border-border/40">
+      <div class="relative w-full max-w-md">
+        <span class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-secondary">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+            <circle cx="11" cy="11" r="7"></circle>
+            <path d="m21 21-4.35-4.35"></path>
+          </svg>
+        </span>
+        <label class="sr-only" for="search">Search books</label>
+        <input id="search" type="search" autocomplete="off"
+               class="w-full bg-transparent border-0 text-[13.5px] placeholder-muted pl-10 pr-4 py-3 focus:ring-0 focus:outline-none text-charcoal"
+               placeholder="Search books">
+      </div>
+
+      <div class="flex items-center gap-4 flex-shrink-0">
+        <p id="today" class="hidden sm:block text-xs text-secondary"></p>
+      </div>
+    </header>
+
+    <main class="workspace-main auto-rail flex-1 overflow-y-auto px-6 md:px-8 py-5 pb-8 [scrollbar-gutter:stable] space-y-5">
+
+      <!-- Continue reading -->
+      <section id="hero-section" aria-labelledby="welcome-heading" class="grid grid-cols-1 xl:grid-cols-12 gap-6">
+        <div class="xl:col-span-7 space-y-4 flex flex-col">
+          <div class="space-y-2">
+            <div class="flex items-center gap-2 flex-wrap">
+              <span class="text-xs uppercase tracking-wider text-secondary font-medium">Daily Reading Room</span>
+            </div>
+            <h1 id="welcome-heading" class="font-serif text-[32px] sm:text-[38px] xl:text-[42px] leading-tight font-semibold tracking-tight">
+              Keep the story going.
+            </h1>
+            <p id="welcome-sub" class="text-sm text-secondary max-w-xl leading-relaxed">
+              The shelf is full, the history is empty. Start anywhere.
+            </p>
+          </div>
+
+          <article id="empty-strip" class="bg-lightCream/80 border border-border/60 rounded-2xl px-4 py-3 flex items-center gap-3.5">
+            <div class="w-9 h-9 rounded-xl bg-[#EAE6DB] flex items-center justify-center flex-shrink-0" aria-hidden="true">
+              <svg class="w-4 h-4 text-charcoal/70" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M4 5.5A1.5 1.5 0 0 1 5.5 4H10a2 2 0 0 1 2 2v13a1.7 1.7 0 0 0-1.7-1.7H4z"></path>
+                <path d="M20 5.5A1.5 1.5 0 0 0 18.5 4H14a2 2 0 0 0-2 2v13a1.7 1.7 0 0 1 1.7-1.7H20z"></path>
+              </svg>
+            </div>
+            <p class="text-xs text-secondary leading-snug min-w-0">
+              <span class="font-semibold text-charcoal">Nothing open yet.</span><span id="empty-strip-note">
+              No page has been read on this device.</span>
+            </p>
+            <a href="#shelf" class="hover-nav inline-flex items-center justify-center min-h-[44px] px-4 ml-auto rounded-full border border-border/70 text-xs font-medium text-charcoal flex-shrink-0">Pick a book</a>
+          </article>
+        </div>
+
+        <div class="xl:col-span-5 space-y-4">
+          <div class="grid grid-cols-3 gap-3">
+            <div class="bg-lightCream/60 border border-border/60 rounded-xl px-3 py-2.5">
+              <p class="text-[11px] font-medium uppercase tracking-wider text-secondary">Streak</p>
+              <p class="mt-1 text-lg font-bold font-serif leading-tight">0 days</p>
+              <p class="text-[10px] text-secondary mt-0.5">No days read yet</p>
+            </div>
+            <div class="bg-lightCream/60 border border-border/60 rounded-xl px-3 py-2.5">
+              <p class="text-[11px] font-medium uppercase tracking-wider text-secondary">Today</p>
+              <p class="mt-1 text-lg font-bold font-serif leading-tight">0 min</p>
+              <p class="text-[10px] text-secondary mt-0.5">Minutes read today</p>
+            </div>
+            <div class="bg-lightCream/60 border border-border/60 rounded-xl px-3 py-2.5">
+              <p class="text-[11px] font-medium uppercase tracking-wider text-secondary">Finished</p>
+              <p class="mt-1 text-lg font-bold font-serif leading-tight">0 books</p>
+              <p class="text-[10px] text-secondary mt-0.5">None finished yet</p>
+            </div>
+          </div>
+
+          <!-- The shelf is hand-built, so the way in is the add form rather than a
+               file picker on this page. The form owns the file input. -->
+          <a href="add.html" id="add-book-btn"
+                  class="hover-nav w-full flex items-center gap-3 rounded-2xl border border-dashed border-border/80 bg-white/40 px-3.5 py-2.5 text-left">
+            <span class="w-8 h-8 rounded-xl bg-[#EAE6DB] flex items-center justify-center flex-shrink-0" aria-hidden="true">
+              <svg class="w-4 h-4 text-charcoal/70" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 5v14"></path><path d="M5 12h14"></path>
+              </svg>
+            </span>
+            <span class="min-w-0">
+              <span class="block font-serif text-sm font-bold leading-tight">Add book</span>
+              <span id="add-book-hint" class="block text-[10.5px] text-secondary leading-snug mt-0.5">Add a title, then attach its PDF</span>
+            </span>
+          </a>
+        </div>
+      </section>
+
+      <!-- Shelf -->
+      <section aria-labelledby="shelf-title" id="shelf" class="space-y-2.5">
+        <div class="flex items-center justify-between gap-4">
+          <h2 id="shelf-title" class="font-serif text-xl font-bold tracking-tight">Curated shelves</h2>
+          <div class="flex items-center gap-1">
+            <button id="shelf-prev" type="button" class="icon-btn rounded-full text-secondary hover:text-coral transition-colors" aria-label="Scroll shelf left">
+              <span class="w-7 h-7 rounded-full border border-border bg-white/70 flex items-center justify-center">
+                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"></path></svg>
+              </span>
+            </button>
+            <button id="shelf-next" type="button" class="icon-btn rounded-full text-secondary hover:text-coral transition-colors" aria-label="Scroll shelf right">
+              <span class="w-7 h-7 rounded-full border border-border bg-white/70 flex items-center justify-center">
+                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18l6-6-6-6"></path></svg>
+              </span>
+            </button>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-2.5 overflow-x-auto pb-1 custom-scroll text-xs" role="group" aria-label="Filter by category">
+          <button type="button" class="filter-pill hover-nav inline-flex items-center min-h-[44px] px-4 rounded-full bg-white/70 text-secondary font-medium border border-border/60 flex-shrink-0" data-cat="all" aria-pressed="true">All recommended</button>
+          <button type="button" class="filter-pill hover-nav inline-flex items-center min-h-[44px] px-4 rounded-full bg-white/70 text-secondary font-medium border border-border/60 flex-shrink-0" data-cat="fantasy" aria-pressed="false">Fantasy and lore</button>
+          <button type="button" class="filter-pill hover-nav inline-flex items-center min-h-[44px] px-4 rounded-full bg-white/70 text-secondary font-medium border border-border/60 flex-shrink-0" data-cat="classic" aria-pressed="false">Classics</button>
+          <button type="button" class="filter-pill hover-nav inline-flex items-center min-h-[44px] px-4 rounded-full bg-white/70 text-secondary font-medium border border-border/60 flex-shrink-0" data-cat="graphic" aria-pressed="false">Graphic novels</button>
+          <button type="button" class="filter-pill hover-nav inline-flex items-center min-h-[44px] px-4 rounded-full bg-white/70 text-secondary font-medium border border-border/60 flex-shrink-0" data-cat="history" aria-pressed="false">Historical</button>
+        </div>
+
+        <div id="shelf-track" class="shelf flex items-end gap-6 overflow-x-auto pb-2 pt-1 custom-scroll">
+
+          <a href="book.html?slug=beauty" class="book-card group flex flex-col gap-3 flex-shrink-0" data-title="Beauty and the Beast" data-author="Gabrielle-Suzanne de Villeneuve" data-cat="classic">
+            <div class="cover c-beauty">
+              <div class="cover-inner">
+                <p class="text-[8px] uppercase tracking-[0.22em] text-blue-200/80">Disney</p>
+                <div class="my-auto">
+                  <p class="font-serif text-lg leading-tight text-amber-100">Beauty</p>
+                  <p class="font-serif italic text-[10px] text-blue-100">and the</p>
+                  <p class="font-serif text-lg leading-tight text-amber-100">Beast</p>
+                </div>
+                <p class="text-[8px] uppercase tracking-[0.18em] text-blue-200/70">Fairy tale</p>
+              </div>
+            </div>
+            <div class="space-y-1">
+              <h3 class="font-serif text-[15px] font-bold leading-snug line-clamp-1 group-hover:text-coral transition-colors">Beauty and the Beast</h3>
+              <p class="text-[12px] text-secondary">Gabrielle-Suzanne</p>
+            </div>
+          </a>
+
+          <a href="book.html?slug=fire" class="book-card group flex flex-col gap-3 flex-shrink-0" data-title="Fire and Blood" data-author="George RR Martin" data-cat="fantasy">
+            <div class="cover c-fire">
+              <div class="cover-inner">
+                <div class="space-y-1">
+                  <p class="text-[7px] uppercase tracking-[0.2em] text-amber-200">300 years before</p>
+                  <p class="text-[8px] uppercase tracking-[0.16em] text-amber-100">A Game of Thrones</p>
+                  <p class="font-serif text-[11px] font-bold tracking-[0.14em] text-stone-100 pt-1">GEORGE R. R. MARTIN</p>
+                </div>
+                <div class="my-auto flex justify-center">
+                  <svg class="w-14 h-14 text-amber-300/90" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                    <path d="M12 2C8 4 6 7 6 10c0 2 .5 4 2 5.5-2 1-3.5 2-4 4.5 3 0 5-1.5 6.5-3.5 1 .5 2.5 1 4.5 1 2 0 3.5-.5 4.5-1 1.5 2 3.5 3.5 6.5 3.5-.5-2.5-2-3.5-4-4.5 1.5-1.5 2-3.5 2-5.5 0-3-2-6-6-8zm-2 7a1.5 1.5 0 110-3 1.5 1.5 0 010 3zm4 0a1.5 1.5 0 110-3 1.5 1.5 0 010 3z"></path>
+                  </svg>
+                </div>
+                <div class="space-y-0.5">
+                  <p class="font-serif text-base font-bold tracking-[0.12em] text-amber-100">FIRE &amp; BLOOD</p>
+                  <p class="text-[7px] tracking-[0.14em] text-amber-200/80 uppercase">Illustrations by Doug Wheatley</p>
+                </div>
+              </div>
+            </div>
+            <div class="space-y-1">
+              <h3 class="font-serif text-[15px] font-bold leading-snug line-clamp-1 group-hover:text-coral transition-colors">Fire and Blood</h3>
+              <p class="text-[12px] text-secondary">George RR Martin</p>
+            </div>
+          </a>
+
+          <a href="book.html?slug=narnia" class="book-card group flex flex-col gap-3 flex-shrink-0" data-title="The Chronicles of Narnia" data-author="C.S. Lewis" data-cat="classic">
+            <div class="cover c-narnia">
+              <div class="cover-inner">
+                <div class="space-y-1">
+                  <p class="text-[7px] uppercase tracking-[0.22em] text-stone-300/80">C.S. Lewis</p>
+                  <p class="font-serif text-[11px] tracking-[0.16em] text-stone-200 uppercase leading-tight pt-1">The<br><span class="text-amber-100 text-[13px] font-bold">Chronicles</span><br>of Narnia</p>
+                </div>
+                <div class="my-auto flex justify-center">
+                  <svg class="w-12 h-12 text-amber-100/90" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" aria-hidden="true">
+                    <path d="M12 21V9M12 9c-2.5 0-4-1.6-4-3.6 1.9-.6 3.4.2 4 1.6.6-1.4 2.1-2.2 4-1.6 0 2-1.5 3.6-4 3.6z"></path>
+                  </svg>
+                </div>
+                <p class="text-[7px] text-stone-400 tracking-[0.12em]">Complete illustrated edition</p>
+              </div>
+            </div>
+            <div class="space-y-1">
+              <h3 class="font-serif text-[15px] font-bold leading-snug line-clamp-1 group-hover:text-coral transition-colors">The Chronicles of Narnia</h3>
+              <p class="text-[12px] text-secondary">C.S. Lewis</p>
+            </div>
+          </a>
+
+          <a href="book.html?slug=deadpool" class="book-card group flex flex-col gap-3 flex-shrink-0" data-title="Deadpool Samurai" data-author="Marvel" data-cat="graphic">
+            <div class="cover c-deadpool">
+              <div class="cover-inner">
+                <div class="flex items-center justify-between">
+                  <span class="bg-red-800 text-white text-[7px] font-extrabold px-1 py-0.5 tracking-tight">MARVEL</span>
+                  <span class="w-4 h-4 rounded-full bg-black text-white text-[8px] font-bold flex items-center justify-center">1</span>
+                </div>
+                <div class="my-auto">
+                  <p class="font-sans font-extrabold text-stone-100 text-base leading-none tracking-tight">DEADPOOL</p>
+                  <p class="text-[10px] font-black tracking-[0.2em] text-amber-300 uppercase pt-1">Samurai</p>
+                </div>
+                <p class="text-[7px] text-red-200/90 tracking-[0.14em] uppercase">Shonen Jump+</p>
+              </div>
+            </div>
+            <div class="space-y-1">
+              <h3 class="font-serif text-[15px] font-bold leading-snug line-clamp-1 group-hover:text-coral transition-colors">Deadpool Samurai</h3>
+              <p class="text-[12px] text-secondary">Marvel</p>
+            </div>
+          </a>
+
+          <a href="book.html?slug=hp6" class="book-card group flex flex-col gap-3 flex-shrink-0" data-title="Harry Potter 06" data-author="J.K. Rowling" data-cat="fantasy">
+            <div class="cover c-hp">
+              <div class="cover-inner">
+                <p class="text-[7px] uppercase tracking-[0.22em] text-emerald-200/80">Year six</p>
+                <div class="my-auto">
+                  <p class="font-serif text-[13px] leading-tight text-emerald-50">Harry Potter</p>
+                  <p class="font-serif italic text-[9px] text-emerald-200/90">and the</p>
+                  <p class="font-serif text-[13px] leading-tight text-emerald-50">Half-Blood Prince</p>
+                </div>
+                <p class="text-[7px] uppercase tracking-[0.18em] text-emerald-200/70">J.K. Rowling</p>
+              </div>
+            </div>
+            <div class="space-y-1">
+              <h3 class="font-serif text-[15px] font-bold leading-snug line-clamp-1 group-hover:text-coral transition-colors">Harry Potter 06</h3>
+              <p class="text-[12px] text-secondary">J.K. Rowling</p>
+            </div>
+          </a>
+
+          <a href="book.html?slug=lost" class="book-card group flex flex-col gap-3 flex-shrink-0" data-title="The Lost Hero" data-author="Rick Riordan" data-cat="fantasy">
+            <div class="cover c-lost">
+              <div class="cover-inner">
+                <p class="text-[7px] uppercase tracking-[0.2em] text-emerald-100/70">Book one</p>
+                <p class="font-serif text-sm leading-tight text-emerald-50 my-auto">The Lost Hero</p>
+                <p class="text-[7px] uppercase tracking-[0.16em] text-emerald-200/60">Rick Riordan</p>
+              </div>
+            </div>
+            <div class="space-y-1">
+              <h3 class="font-serif text-[15px] font-bold leading-snug line-clamp-1 group-hover:text-coral transition-colors">The Lost Hero</h3>
+              <p class="text-[12px] text-secondary">Rick Riordan</p>
+            </div>
+          </a>
+
+          <a href="book.html?slug=got" class="book-card group flex flex-col gap-3 flex-shrink-0" data-title="A Game of Thrones" data-author="George RR Martin" data-cat="history">
+            <div class="cover c-fire">
+              <div class="cover-inner">
+                <p class="text-[7px] uppercase tracking-[0.2em] text-amber-200/80">Book one</p>
+                <p class="font-serif text-[13px] leading-tight text-amber-50 my-auto">A Game of Thrones</p>
+                <p class="text-[7px] uppercase tracking-[0.16em] text-amber-200/60">George RR Martin</p>
+              </div>
+            </div>
+            <div class="space-y-1">
+              <h3 class="font-serif text-[15px] font-bold leading-snug line-clamp-1 group-hover:text-coral transition-colors">A Game of Thrones</h3>
+              <p class="text-[12px] text-secondary">George RR Martin</p>
+            </div>
+          </a>
+
+          <a href="book.html?slug=hobbit" class="book-card group flex flex-col gap-3 flex-shrink-0" data-title="The Hobbit" data-author="J.R.R. Tolkien" data-cat="fantasy">
+            <div class="cover c-beauty">
+              <div class="cover-inner">
+                <p class="text-[7px] uppercase tracking-[0.2em] text-blue-200/70">There and back again</p>
+                <p class="font-serif text-[13px] leading-tight text-amber-100 my-auto">The Hobbit</p>
+                <p class="text-[7px] uppercase tracking-[0.16em] text-blue-200/60">J.R.R. Tolkien</p>
+              </div>
+            </div>
+            <div class="space-y-1">
+              <h3 class="font-serif text-[15px] font-bold leading-snug line-clamp-1 group-hover:text-coral transition-colors">The Hobbit</h3>
+              <p class="text-[12px] text-secondary">J.R.R. Tolkien</p>
+            </div>
+          </a>
+        </div>
+
+        <p id="shelf-empty" class="hidden text-sm text-secondary py-8 text-center">
+          No book matches that search. Try another title or author.
+        </p>
+      </section>
+
+    </main>
+
+    <footer class="h-11 px-6 md:pl-8 md:pr-[38px] border-t border-border/60 flex items-center justify-between gap-4 text-xs text-secondary bg-cream/90 flex-shrink-0">
+      <div class="flex items-center gap-2 min-w-0">
+        <span class="w-2 h-2 rounded-full bg-coral flex-shrink-0" aria-hidden="true"></span>
+        <p class="text-[11.5px] truncate">Shelf updated today.</p>
+      </div>
+      <div class="font-medium text-[11.5px] text-charcoal flex-shrink-0">
+        <span id="shelf-count" class="text-coral font-semibold">8</span> / 60 in queue
+      </div>
+    </footer>
+  </div>
+</div>
+
+<script src="books.js"></script>
+<script src="saved.js"></script>
+<script>
+(function () {
+  var track = document.getElementById('shelf-track');
+  var empty = document.getElementById('shelf-empty');
+  var countEl = document.getElementById('shelf-count');
+  var search = document.getElementById('search');
+  var pills = Array.prototype.slice.call(document.querySelectorAll('.filter-pill'));
+  var activeCat = 'all';
+
+  // The eight drawn cards below are hand-built markup: each cover carries its own
+  // SVG, badge and type. They are the shelf's design, so they are never replaced.
+  // Books added later have no drawn art, so their cards are rendered from the
+  // database and appended after the drawn ones.
+  function collectCards() {
+    return Array.prototype.slice.call(track.querySelectorAll('.book-card'));
+  }
+
+  function el(tag, className, text) {
+    var node = document.createElement(tag);
+    if (className) node.className = className;
+    if (text != null) node.textContent = text;
+    return node;
+  }
+
+  // Mirrors the hand-built card: link, cover with kicker / title lines / author
+  // footer, then the title and author under the cover.
+  function buildCard(book) {
+    var card = el('a', 'book-card group flex flex-col gap-3 flex-shrink-0');
+    card.href = 'book.html?slug=' + encodeURIComponent(book.slug);
+    card.dataset.title = book.title || '';
+    card.dataset.author = book.author || '';
+    card.dataset.cat = book.catSlug || '';
+
+    var cover = el('div', 'cover ' + (book.cover || 'c-plain'));
+    var inner = el('div', 'cover-inner');
+
+    if (book.kicker) {
+      inner.appendChild(el('p', 'text-[7px] uppercase tracking-[0.2em] text-white/60', book.kicker));
+    }
+
+    var mid = el('div', 'my-auto');
+    mid.appendChild(el('p', 'font-serif text-[13px] leading-tight text-white/95', book.line1 || book.title));
+    if (book.line2) {
+      mid.appendChild(el('p', 'font-serif italic text-[9px] text-white/75', book.line2));
+    }
+    if (book.line3) {
+      mid.appendChild(el('p', 'font-serif text-[13px] leading-tight text-white/95', book.line3));
+    }
+    inner.appendChild(mid);
+
+    if (book.coverAuthor) {
+      inner.appendChild(el('p', 'text-[7px] uppercase tracking-[0.16em] text-white/55', book.coverAuthor));
+    }
+
+    cover.appendChild(inner);
+    card.appendChild(cover);
+
+    var meta = el('div', 'space-y-1');
+    meta.appendChild(el('h3', 'font-serif text-[15px] font-bold leading-snug line-clamp-1 group-hover:text-coral transition-colors', book.title));
+    // The hand-built cards keep the author to one line, so a long author must be
+    // clamped too: an extra line here grows the whole card and knocks its title
+    // out of line with the rest of the shelf.
+    meta.appendChild(el('p', 'text-[12px] text-secondary line-clamp-1', book.author));
+    card.appendChild(meta);
+
+    return card;
+  }
+
+  // A book is "already drawn" when a card points at the same slug. Matching on the
+  // slug rather than the title means renaming a book cannot produce a second card.
+  function drawnSlugs() {
+    var seen = {};
+    collectCards().forEach(function (card) {
+      var m = /[?&]slug=([^&]+)/.exec(card.getAttribute('href') || '');
+      if (m) seen[decodeURIComponent(m[1])] = true;
+    });
+    return seen;
+  }
+
+  function appendMissing(books) {
+    var seen = drawnSlugs();
+    var added = 0;
+    books.forEach(function (book) {
+      if (!book || !book.slug || seen[book.slug]) return;
+      track.appendChild(buildCard(book));
+      seen[book.slug] = true;
+      added++;
+    });
+    return added;
+  }
+
+  function apply() {
+    var q = (search.value || '').trim().toLowerCase();
+    var shown = 0;
+
+    collectCards().forEach(function (card) {
+      var title = (card.dataset.title || '').toLowerCase();
+      var author = (card.dataset.author || '').toLowerCase();
+      var cat = card.dataset.cat || '';
+      var matchQ = !q || title.indexOf(q) !== -1 || author.indexOf(q) !== -1;
+      var matchCat = activeCat === 'all' || cat === activeCat;
+      var visible = matchQ && matchCat;
+      card.classList.toggle('hidden', !visible);
+      if (visible) shown++;
+    });
+
+    empty.classList.toggle('hidden', shown > 0);
+    countEl.textContent = String(shown);
+    if (window.requestAnimationFrame) {
+      window.requestAnimationFrame(function () {
+        if (typeof syncArrows === 'function') syncArrows();
+      });
+    }
+  }
+
+  search.addEventListener('input', apply);
+
+  pills.forEach(function (pill) {
+    pill.addEventListener('click', function () {
+      activeCat = pill.dataset.cat;
+      // The pressed pill is styled from [aria-pressed] in CSS, so this only has to
+      // move the state; toggling colour classes here would race the hover rule.
+      pills.forEach(function (p) {
+        p.setAttribute('aria-pressed', p === pill ? 'true' : 'false');
+      });
+      track.scrollTo({ left: 0, behavior: 'smooth' });
+      apply();
+    });
+  });
+
+  // The arrows exist to reach covers the row is hiding. When the viewport is wide or
+  // tall enough that every card already fits, scrolling does nothing, so the buttons
+  // would be dead controls: disable them instead, and re-check on resize/filter.
+  var prevBtn = document.getElementById('shelf-prev');
+  var nextBtn = document.getElementById('shelf-next');
+
+  function syncArrows() {
+    var max = track.scrollWidth - track.clientWidth;
+    var spare = 2;
+    prevBtn.disabled = !(max > spare) || track.scrollLeft <= spare;
+    nextBtn.disabled = !(max > spare) || track.scrollLeft >= max - spare;
+  }
+
+  track.addEventListener('scroll', syncArrows, { passive: true });
+  window.addEventListener('resize', syncArrows);
+
+  prevBtn.addEventListener('click', function () {
+    track.scrollBy({ left: -320, behavior: 'smooth' });
+  });
+  nextBtn.addEventListener('click', function () {
+    track.scrollBy({ left: 320, behavior: 'smooth' });
+  });
+
+  // "Add book" now navigates to add.html, which owns the form and the file
+  // input. The old in-page picker has no elements left to bind, so its handler
+  // is gone rather than left pointing at missing ids.
+
+  // Reveal the workspace rail only while the column moves, then fade it back out.
+  // 900ms is long enough to keep it on screen between wheel ticks and short enough
+  // that it is gone before a reader looking for it would call it permanent.
+  var railEl = document.querySelector('main.auto-rail');
+  if (railEl) {
+    var railTimer = null;
+    railEl.addEventListener('scroll', function () {
+      railEl.classList.add('is-scrolling');
+      if (railTimer) window.clearTimeout(railTimer);
+      railTimer = window.setTimeout(function () {
+        railEl.classList.remove('is-scrolling');
+      }, 900);
+    }, { passive: true });
+  }
+
+  syncArrows();
+
+  // The header date was a hard-coded string, which reads as wrong the day after it ships.
+  var todayEl = document.getElementById('today');
+  if (todayEl) {
+    todayEl.textContent = new Intl.DateTimeFormat('en-GB', {
+      weekday: 'long', day: 'numeric', month: 'long'
+    }).format(new Date());
+  }
+
+  apply();
+
+  // Books added through add.html live in the database. The drawn cards stay as they
+  // are; anything the page does not already show is appended once the API answers.
+  // A failed fetch leaves the eight drawn cards alone rather than emptying the shelf.
+  if (window.PerpusBooks && window.PerpusBooks.ready) {
+    window.PerpusBooks.ready.then(function () {
+      // all() returns the book records; order() only returns slugs.
+      if (typeof window.PerpusBooks.all !== 'function') return;
+      var added = appendMissing(window.PerpusBooks.all());
+      if (added > 0) {
+        apply();
+        syncArrows();
+      }
+    }).catch(function () {
+      /* the hand-built shelf is still a complete shelf */
+    });
+  }
+})();
+</script>
+</body>
+</html>

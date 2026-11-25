@@ -1,0 +1,13 @@
+node_modules/
+.env
+.env.local
+*.log
+
+# Uploaded PDFs are local files, not repository content.
+storage/
+
+# scratch/probe files
+scripts/tmp/
+
+# design screenshots, not app assets
+preview/

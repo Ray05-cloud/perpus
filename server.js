@@ -1,0 +1,693 @@
+/*
+  Small Express-free HTTP layer: serves the three static pages and exposes the
+  saved-stories list at /api/saved. The browser keeps a visitor id in an
+  httpOnly cookie, so the list follows the visitor rather than the device.
+*/
+import { createServer } from 'node:http';
+import { readFile, stat } from 'node:fs/promises';
+import { createReadStream } from 'node:fs';
+import { randomUUID } from 'node:crypto';
+import { extname, join, normalize, sep } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { pool, migrate } from './db/index.js';
+import {
+  ensureStorage,
+  receivePdf,
+  pdfPath,
+  pdfInfo,
+  removePdf
+} from './lib/pdf-store.js';
+import { uniqueSlug, coverLines, slugify } from './lib/slug.js';
+
+const ROOT = fileURLToPath(new URL('.', import.meta.url));
+const PORT = Number(process.env.PORT) || 3000;
+const COOKIE = 'perpus_vid';
+
+const MIME = {
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.svg': 'image/svg+xml',
+  '.ico': 'image/x-icon'
+};
+
+// Only these files are public. Directory traversal cannot reach the rest of the
+// project (db/, scripts/, .env) because the path never comes from the request.
+const PAGES = new Set(['/', '/index.html', '/book.html', '/bookmarks.html', '/add.html', '/reader.html', '/books.js', '/saved.js']);
+
+// The eight books that shipped with the shelf. index.html draws their covers as
+// hand-written markup, so removing one leaves a card pointing at nothing.
+const SEED_SLUGS = new Set(['beauty', 'fire', 'narnia', 'deadpool', 'hp6', 'lost', 'got', 'hobbit']);
+
+function visitorId(req, res) {
+  const raw = req.headers.cookie || '';
+  const hit = raw
+    .split(';')
+    .map((part) => part.trim())
+    .find((part) => part.startsWith(COOKIE + '='));
+
+  if (hit) {
+    const value = decodeURIComponent(hit.slice(COOKIE.length + 1));
+    if (/^[0-9a-f-]{36}$/.test(value)) return value;
+  }
+
+  const fresh = randomUUID();
+  res.setHeader(
+    'Set-Cookie',
+    `${COOKIE}=${fresh}; Path=/; HttpOnly; SameSite=Lax; Max-Age=31536000`
+  );
+  return fresh;
+}
+
+function sendJson(res, status, body) {
+  const payload = JSON.stringify(body);
+  res.writeHead(status, {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Content-Length': Buffer.byteLength(payload),
+    'Cache-Control': 'no-store'
+  });
+  res.end(payload);
+}
+
+function readBody(req, limit = 8 * 1024) {
+  return new Promise((resolve, reject) => {
+    let size = 0;
+    const chunks = [];
+    req.on('data', (chunk) => {
+      size += chunk.length;
+      if (size > limit) {
+        reject(new Error('Body too large'));
+        req.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on('end', () => {
+      if (!size) return resolve({});
+      try {
+        resolve(JSON.parse(Buffer.concat(chunks).toString('utf8')));
+      } catch {
+        reject(new Error('Body is not valid JSON'));
+      }
+    });
+    req.on('error', reject);
+  });
+}
+
+const SELECT_COLUMNS =
+  'slug, title, author, cat, cover, series, saved_at as "savedAt"';
+
+async function listSaved(visitor) {
+  const { rows } = await pool.query(
+    `select ${SELECT_COLUMNS} from saved_books where visitor_id = $1 order by saved_at desc`,
+    [visitor]
+  );
+  return rows;
+}
+
+async function upsertSaved(visitor, book) {
+  const { rows } = await pool.query(
+    `insert into saved_books (visitor_id, slug, title, author, cat, cover, series)
+     values ($1, $2, $3, $4, $5, $6, $7)
+     on conflict (visitor_id, slug) do nothing
+     returning ${SELECT_COLUMNS}`,
+    [visitor, book.slug, book.title, book.author ?? null, book.cat ?? null, book.cover ?? null, book.series ?? null]
+  );
+  return rows[0] ?? null;
+}
+
+async function deleteSaved(visitor, slug) {
+  await pool.query('delete from saved_books where visitor_id = $1 and slug = $2', [visitor, slug]);
+}
+
+async function clearSaved(visitor) {
+  await pool.query('delete from saved_books where visitor_id = $1', [visitor]);
+}
+
+// Column names are snake_case in Postgres and camelCase in books.js, because
+// every page already reads the camelCase shape.
+const BOOK_COLUMNS = `
+  slug, label, title, author, cat,
+  cat_slug    as "catSlug",
+  cover, kicker,
+  line1, line2, line3,
+  cover_author as "coverAuthor",
+  badge, series, pages, blurb, blurb2, edition,
+  pdf_name    as "pdfName",
+  pdf_size    as "pdfSize",
+  pdf_added_at as "pdfAddedAt",
+  sort_order  as "sortOrder"
+`;
+
+// The UI must not offer a delete button for a book the server would refuse, so the
+// permission travels with the record instead of being guessed on the client.
+function withDeletable(book) {
+  return { ...book, deletable: !SEED_SLUGS.has(book.slug) };
+}
+
+async function listBooks() {
+  const { rows } = await pool.query(
+    `select ${BOOK_COLUMNS} from books order by sort_order, id`
+  );
+  return rows.map(withDeletable);
+}
+
+async function getBook(slug) {
+  const { rows } = await pool.query(
+    `select ${BOOK_COLUMNS} from books where slug = $1`,
+    [slug]
+  );
+  return rows[0] ? withDeletable(rows[0]) : null;
+}
+
+async function slugExists(slug) {
+  const { rows } = await pool.query('select 1 from books where slug = $1', [slug]);
+  return rows.length > 0;
+}
+
+// Categories are a closed set because the shelf's filter pills are hardcoded.
+// Adding a new one here without adding a pill would create books that no filter
+// can reach, so the mapping is explicit in both directions.
+const CATEGORIES = {
+  classic: 'Classics',
+  fantasy: 'Fantasy and lore',
+  graphic: 'Graphic novels',
+  history: 'Historical'
+};
+
+/*
+  Adds a book that has no PDF yet.
+
+  A book can exist on the shelf without a file — that is what the eight seed
+  books are — and the PDF is attached afterwards by POST /api/books/:slug/pdf.
+  Keeping the two apart means a failed upload does not create a half-book.
+*/
+async function createBook(body) {
+  const title = typeof body.title === 'string' ? body.title.trim() : '';
+  const author = typeof body.author === 'string' ? body.author.trim() : '';
+
+  if (!title || title.length > 300) {
+    return { error: 'A title is required and must be under 300 characters.' };
+  }
+  if (!author || author.length > 200) {
+    return { error: 'An author is required and must be under 200 characters.' };
+  }
+
+  const catSlug = typeof body.catSlug === 'string' ? body.catSlug.trim() : '';
+  if (!Object.prototype.hasOwnProperty.call(CATEGORIES, catSlug)) {
+    return {
+      error: 'Pick a category: ' + Object.keys(CATEGORIES).join(', ') + '.'
+    };
+  }
+
+  const pages = Number.isInteger(body.pages) && body.pages > 0 ? body.pages : null;
+  const series = typeof body.series === 'string' && body.series.trim()
+    ? body.series.trim().slice(0, 200)
+    : null;
+  const blurb = typeof body.blurb === 'string' && body.blurb.trim()
+    ? body.blurb.trim().slice(0, 2000)
+    : null;
+
+  const slug = await uniqueSlug(title, slugExists);
+  const lines = coverLines(title);
+
+  const { rows } = await pool.query(
+    `insert into books (
+       slug, label, title, author, cat, cat_slug, cover, kicker,
+       line1, line2, line3, cover_author, badge, series, pages,
+       blurb, edition, sort_order
+     ) values (
+       $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,
+       (select coalesce(max(sort_order), -1) + 1 from books)
+     )
+     returning ${BOOK_COLUMNS}`,
+    [
+      slug,
+      title,
+      title,
+      author,
+      CATEGORIES[catSlug],
+      catSlug,
+      // A new book has no hand-drawn cover, so it takes the neutral stone tone.
+      // See .c-plain in index.html and book.html.
+      'c-plain',
+      // The kicker is the small line at the top of the cover. A series name is
+      // the natural fit, but a standalone book has none, so the category label
+      // keeps the cover from starting with an empty line.
+      series || CATEGORIES[catSlug],
+      lines.line1,
+      lines.line2 || null,
+      lines.line3 || null,
+      author,
+      null,
+      series,
+      pages,
+      blurb,
+      pages ? `Added from a PDF, ${pages} pages.` : 'Added from a PDF.'
+    ]
+  );
+
+  return { book: { ...rows[0], hasPdf: false } };
+}
+
+function validateBook(body) {
+  const slug = typeof body.slug === 'string' ? body.slug.trim() : '';
+  const title = typeof body.title === 'string' ? body.title.trim() : '';
+  if (!slug || !/^[a-z0-9-]{1,64}$/i.test(slug)) {
+    return { error: 'slug must be 1-64 letters, digits or dashes' };
+  }
+  if (!title || title.length > 300) {
+    return { error: 'title is required and must be under 300 characters' };
+  }
+  const field = (value, max) =>
+    typeof value === 'string' && value.trim() ? value.trim().slice(0, max) : null;
+
+  return {
+    book: {
+      slug,
+      title,
+      author: field(body.author, 200),
+      cat: field(body.cat, 80),
+      cover: field(body.cover, 40),
+      series: field(body.series, 200)
+    }
+  };
+}
+
+async function handleApi(req, res, url) {
+  const visitor = visitorId(req, res);
+  const path = url.pathname;
+
+  if (path === '/api/saved' && req.method === 'GET') {
+    return sendJson(res, 200, { saved: await listSaved(visitor) });
+  }
+
+  if (path === '/api/books' && req.method === 'GET') {
+    return sendJson(res, 200, { books: await listBooks() });
+  }
+
+  // The generic :slug route must not swallow the sub-resources, so anything with
+  // a known suffix is matched first and this one excludes them explicitly.
+  const hasSubResource = /\/(pdf|notes|progress)(\/\d+)?$/.test(path);
+  if (path.startsWith('/api/books/') && req.method === 'GET' && !hasSubResource) {
+    const slug = decodeURIComponent(path.slice('/api/books/'.length));
+    if (!/^[a-z0-9-]{1,64}$/i.test(slug)) return sendJson(res, 400, { error: 'Bad slug' });
+    const book = await getBook(slug);
+    if (!book) return sendJson(res, 404, { error: 'No such book' });
+    return sendJson(res, 200, { book });
+  }
+
+  // ---- Reader state: notes and reading position ----
+  //
+  // Both are scoped to the visitor cookie, the same way bookmarks are. A note
+  // belongs to the reader who wrote it; nothing here is shared between visitors.
+
+  const notesMatch = path.match(/^\/api\/books\/([a-z0-9-]{1,64})\/notes$/i);
+  if (notesMatch) {
+    const slug = notesMatch[1];
+
+    if (req.method === 'GET') {
+      const book = await getBook(slug);
+      if (!book) return sendJson(res, 404, { error: 'No such book' });
+      const { rows } = await pool.query(
+        `select id, page, body, quote, color, kind, rect, created_at as "createdAt"
+           from notes
+          where visitor_id = $1 and slug = $2
+          order by created_at desc, id desc`,
+        [visitor, slug]
+      );
+      return sendJson(res, 200, { notes: rows });
+    }
+
+    if (req.method === 'POST') {
+      const book = await getBook(slug);
+      if (!book) return sendJson(res, 404, { error: 'No such book' });
+
+      let body;
+      try {
+        body = await readBody(req);
+      } catch (err) {
+        return sendJson(res, 400, { error: err.message });
+      }
+
+      const text = typeof body.body === 'string' ? body.body.trim() : '';
+      const page = Number(body.page);
+      const kind = ['highlight', 'bookmark'].includes(body.kind) ? body.kind : 'note';
+      // Only a written note needs text. A highlight is a rectangle and a
+      // bookmark is just a page marker, so both are allowed to be empty.
+      if (kind === 'note' && !text) {
+        return sendJson(res, 400, { error: 'A note needs some text.' });
+      }
+      if (text.length > 4000) {
+        return sendJson(res, 400, { error: 'A note needs text of at most 4000 characters.' });
+      }
+      if (!Number.isInteger(page) || page < 1) {
+        return sendJson(res, 400, { error: 'A note needs a page number.' });
+      }
+
+      const quote = typeof body.quote === 'string' && body.quote.trim()
+        ? body.quote.trim().slice(0, 2000)
+        : null;
+      const color = ['yellow', 'coral', 'mint'].includes(body.color) ? body.color : null;
+
+      // A scanned page has no text to select, so a highlight is a rectangle drawn
+      // over the page. Coordinates are relative to the page box (0..1) so the mark
+      // stays in place when the reader zooms or the window resizes.
+      let rect = null;
+      if (kind === 'highlight') {
+        const r = body.rect;
+        const nums = r && typeof r === 'object' ? [r.x, r.y, r.w, r.h] : [];
+        if (nums.length !== 4 || !nums.every((v) => Number.isFinite(Number(v)))) {
+          return sendJson(res, 400, { error: 'A highlight needs a rectangle (x, y, w, h).' });
+        }
+        const clamp = (v) => Math.min(1, Math.max(0, Number(v)));
+        rect = { x: clamp(r.x), y: clamp(r.y), w: clamp(r.w), h: clamp(r.h) };
+        if (rect.w <= 0.005 || rect.h <= 0.005) {
+          return sendJson(res, 400, { error: 'That highlight is too small to keep.' });
+        }
+      }
+
+      const { rows } = await pool.query(
+        `insert into notes (visitor_id, slug, page, body, quote, color, kind, rect)
+              values ($1, $2, $3, $4, $5, $6, $7, $8)
+           returning id, page, body, quote, color, kind, rect, created_at as "createdAt"`,
+        [visitor, slug, page, text, quote, color, kind, rect ? JSON.stringify(rect) : null]
+      );
+      return sendJson(res, 201, { note: rows[0] });
+    }
+  }
+
+  const oneNoteMatch = path.match(/^\/api\/books\/([a-z0-9-]{1,64})\/notes\/(\d+)$/i);
+  if (oneNoteMatch && req.method === 'DELETE') {
+    const [slug, id] = [oneNoteMatch[1], Number(oneNoteMatch[2])];
+    const { rowCount } = await pool.query(
+      'delete from notes where id = $1 and visitor_id = $2 and slug = $3',
+      [id, visitor, slug]
+    );
+    if (!rowCount) return sendJson(res, 404, { error: 'No such note' });
+    return sendJson(res, 200, { deleted: id });
+  }
+
+  const progressMatch = path.match(/^\/api\/books\/([a-z0-9-]{1,64})\/progress$/i);
+  if (progressMatch) {
+    const slug = progressMatch[1];
+
+    if (req.method === 'GET') {
+      const { rows } = await pool.query(
+        `select page, zoom, spread, updated_at as "updatedAt"
+           from reading_progress
+          where visitor_id = $1 and slug = $2`,
+        [visitor, slug]
+      );
+      return sendJson(res, 200, { progress: rows[0] ?? null });
+    }
+
+    if (req.method === 'PUT' || req.method === 'POST') {
+      const book = await getBook(slug);
+      if (!book) return sendJson(res, 404, { error: 'No such book' });
+
+      let body;
+      try {
+        body = await readBody(req);
+      } catch (err) {
+        return sendJson(res, 400, { error: err.message });
+      }
+
+      const page = Number(body.page);
+      if (!Number.isInteger(page) || page < 1) {
+        return sendJson(res, 400, { error: 'A page number is required.' });
+      }
+      const zoom = Number.isFinite(Number(body.zoom)) ? Math.round(Number(body.zoom)) : null;
+      const spread = Boolean(body.spread);
+
+      const { rows } = await pool.query(
+        `insert into reading_progress (visitor_id, slug, page, zoom, spread, updated_at)
+              values ($1, $2, $3, $4, $5, now())
+         on conflict (visitor_id, slug) do update
+                 set page = excluded.page,
+                     zoom = excluded.zoom,
+                     spread = excluded.spread,
+                     updated_at = now()
+           returning page, zoom, spread, updated_at as "updatedAt"`,
+        [visitor, slug, page, zoom, spread]
+      );
+      return sendJson(res, 200, { progress: rows[0] });
+    }
+  }
+
+  if (path === '/api/books' && req.method === 'POST') {
+    let body;
+    try {
+      body = await readBody(req);
+    } catch (err) {
+      return sendJson(res, 400, { error: err.message });
+    }
+    const result = await createBook(body);
+    if (result.error) return sendJson(res, 400, { error: result.error });
+    return sendJson(res, 201, { book: result.book });
+  }
+
+  // Deleting a book has to clear three things, or it leaves rubbish behind: the
+  // row, the PDF on disk, and any bookmark pointing at the slug. The bookmark of a
+  // deleted book would otherwise open a page that no longer exists.
+  if (path.startsWith('/api/books/') && req.method === 'DELETE' && !path.endsWith('/pdf')) {
+    const slug = decodeURIComponent(path.slice('/api/books/'.length));
+    if (!/^[a-z0-9-]{1,64}$/i.test(slug)) return sendJson(res, 400, { error: 'Bad slug' });
+
+    // The eight drawn books are the shelf's design: their covers are hand-built
+    // markup in index.html. Deleting one would leave a card pointing nowhere, so
+    // they are refused here rather than only hidden in the UI.
+    if (SEED_SLUGS.has(slug)) {
+      return sendJson(res, 409, {
+        error: 'This book is part of the original shelf and cannot be deleted.'
+      });
+    }
+
+    const book = await getBook(slug);
+    if (!book) return sendJson(res, 404, { error: 'No such book' });
+
+    const removedBookmarks = await pool.query(
+      'delete from saved_books where slug = $1 returning id',
+      [slug]
+    );
+    // Notes and reading positions belong to the deleted book too; leaving them
+    // behind would show up again if a book with the same slug were re-added.
+    await pool.query('delete from notes where slug = $1', [slug]);
+    await pool.query('delete from reading_progress where slug = $1', [slug]);
+    await pool.query('delete from books where slug = $1', [slug]);
+    // The row is gone before the file is touched: a failed unlink leaves an
+    // orphan file, which removePdf already tolerates, but a failed delete after
+    // unlinking would leave a row pointing at a missing file.
+    await removePdf(slug);
+
+    return sendJson(res, 200, {
+      deleted: slug,
+      title: book.title,
+      bookmarksRemoved: removedBookmarks.rowCount
+    });
+  }
+
+  // Attach a PDF to an existing book. Separate from creating the book so a
+  // failed upload never leaves a half-created record.
+  const pdfMatch = path.match(/^\/api\/books\/([a-z0-9-]{1,64})\/pdf$/i);
+  if (pdfMatch && req.method === 'POST') {
+    const slug = pdfMatch[1];
+    const book = await getBook(slug);
+    if (!book) return sendJson(res, 404, { error: 'No such book' });
+
+    let uploaded;
+    try {
+      uploaded = await receivePdf(req, { destPath: pdfPath(slug) });
+    } catch (err) {
+      return sendJson(res, 400, { error: err.message });
+    }
+
+    const info = await pdfInfo(slug);
+    const { rows } = await pool.query(
+      `update books
+          set pdf_name = $2, pdf_size = $3, pdf_added_at = now(), updated_at = now()
+        where slug = $1
+        returning ${BOOK_COLUMNS}`,
+      [slug, slug + '.pdf', info ? info.size : uploaded.size]
+    );
+
+    return sendJson(res, 200, {
+      book: rows[0],
+      pdf: { size: info ? info.size : uploaded.size },
+      hasPdf: true
+    });
+  }
+
+  // The reader needs the bytes, not a JSON description of them.
+  if (pdfMatch && req.method === 'GET') {
+    const slug = pdfMatch[1];
+    const book = await getBook(slug);
+    if (!book) return sendJson(res, 404, { error: 'No such book' });
+
+    const file = pdfPath(slug);
+    let size;
+    try {
+      size = (await stat(file)).size;
+    } catch (err) {
+      if (err.code === 'ENOENT') {
+        return sendJson(res, 404, { error: 'This book has no PDF yet' });
+      }
+      throw err;
+    }
+
+    // PDF.js asks for byte ranges and reads a 32 MB book a chunk at a time.
+    // Serving the whole file with Content-Length alone makes the reader wait for
+    // the entire download before the first page appears.
+    const range = req.headers.range;
+    const headers = {
+      'Content-Type': 'application/pdf',
+      'Accept-Ranges': 'bytes',
+      // inline so a reader can embed it; the filename is what a download uses.
+      'Content-Disposition': `inline; filename="${slug}.pdf"`,
+      'Cache-Control': 'no-cache'
+    };
+
+    const match = range && /^bytes=(\d*)-(\d*)$/.exec(range.trim());
+    if (match) {
+      const start = match[1] ? Number(match[1]) : 0;
+      const end = match[2] ? Math.min(Number(match[2]), size - 1) : size - 1;
+
+      if (!Number.isFinite(start) || start > end || start >= size) {
+        res.writeHead(416, { 'Content-Range': `bytes */${size}` });
+        res.end();
+        return;
+      }
+
+      res.writeHead(206, {
+        ...headers,
+        'Content-Range': `bytes ${start}-${end}/${size}`,
+        'Content-Length': end - start + 1
+      });
+      createReadStream(file, { start, end }).pipe(res);
+      return;
+    }
+
+    res.writeHead(200, { ...headers, 'Content-Length': size });
+    createReadStream(file).pipe(res);
+    return;
+  }
+
+  if (pdfMatch && req.method === 'DELETE') {
+    const slug = pdfMatch[1];
+    const book = await getBook(slug);
+    if (!book) return sendJson(res, 404, { error: 'No such book' });
+
+    await removePdf(slug);
+    const { rows } = await pool.query(
+      `update books
+          set pdf_name = null, pdf_size = null, pdf_added_at = null, updated_at = now()
+        where slug = $1
+        returning ${BOOK_COLUMNS}`,
+      [slug]
+    );
+    return sendJson(res, 200, { book: rows[0], hasPdf: false });
+  }
+
+  if (path === '/api/saved' && req.method === 'POST') {
+    let body;
+    try {
+      body = await readBody(req);
+    } catch (err) {
+      return sendJson(res, 400, { error: err.message });
+    }
+    const { book, error } = validateBook(body);
+    if (error) return sendJson(res, 400, { error });
+
+    const inserted = await upsertSaved(visitor, book);
+    if (!inserted) {
+      // Already saved: POST is a toggle, so a repeat press removes it.
+      await deleteSaved(visitor, book.slug);
+      return sendJson(res, 200, { saved: false, savedList: await listSaved(visitor) });
+    }
+    return sendJson(res, 201, { saved: true, item: inserted, savedList: await listSaved(visitor) });
+  }
+
+  if (path === '/api/saved' && req.method === 'DELETE') {
+    await clearSaved(visitor);
+    return sendJson(res, 200, { savedList: [] });
+  }
+
+  if (path.startsWith('/api/saved/') && req.method === 'DELETE') {
+    const slug = decodeURIComponent(path.slice('/api/saved/'.length));
+    if (!/^[a-z0-9-]{1,64}$/i.test(slug)) return sendJson(res, 400, { error: 'Bad slug' });
+    await deleteSaved(visitor, slug);
+    return sendJson(res, 200, { savedList: await listSaved(visitor) });
+  }
+
+  return sendJson(res, 404, { error: 'No such endpoint' });
+}
+
+async function serveStatic(res, pathname) {
+  const target = pathname === '/' ? '/index.html' : pathname;
+
+  // PDF.js ships its own files inside node_modules. They are served from one
+  // fixed directory and never from a path the request controls, so this cannot
+  // be used to read anything outside it.
+  let file;
+  if (target.startsWith('/vendor/pdfjs/')) {
+    const name = target.slice('/vendor/pdfjs/'.length);
+    if (!/^[a-z0-9.-]+$/i.test(name)) return false;
+    file = join(ROOT, 'node_modules', 'pdfjs-dist', 'build', name);
+  } else if (PAGES.has(target)) {
+    file = join(ROOT, normalize(target).replace(/^([/\\])+/, ''));
+    if (!file.startsWith(ROOT.endsWith(sep) ? ROOT : ROOT + sep)) return false;
+  } else {
+    return false;
+  }
+
+  let body;
+  try {
+    body = await readFile(file);
+  } catch (err) {
+    if (err.code === 'ENOENT') return false;
+    throw err;
+  }
+
+  // The worker is a module, and the main bundle imports it by relative name.
+  const type = target.endsWith('.mjs') || target.endsWith('.js')
+    ? 'text/javascript; charset=utf-8'
+    : (MIME[extname(file)] || 'application/octet-stream');
+
+  res.writeHead(200, {
+    'Content-Type': type,
+    'Content-Length': body.length,
+    'Cache-Control': 'public, max-age=86400'
+  });
+  res.end(body);
+  return true;
+}
+
+const server = createServer(async (req, res) => {
+  const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+
+  try {
+    if (url.pathname.startsWith('/api/')) {
+      await handleApi(req, res, url);
+      return;
+    }
+    if (req.method !== 'GET' && req.method !== 'HEAD') {
+      res.writeHead(405, { Allow: 'GET, HEAD' }).end();
+      return;
+    }
+    if (await serveStatic(res, url.pathname)) return;
+    res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+    res.end('Not found');
+  } catch (err) {
+    console.error(`${req.method} ${url.pathname} failed:`, err.message);
+    if (!res.headersSent) sendJson(res, 500, { error: 'Server error' });
+    else res.end();
+  }
+});
+
+await migrate();
+await ensureStorage();
+server.listen(PORT, () => {
+  console.log(`PERPUS on http://localhost:${PORT}`);
+});

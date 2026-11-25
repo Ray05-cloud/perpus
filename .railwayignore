@@ -1,0 +1,12 @@
+# Local-only files: never part of a deploy.
+node_modules/
+.env
+.env.local
+*.log
+
+# Uploaded PDFs live on the Railway volume at runtime, not in the build.
+storage/
+
+# Scratch and design screenshots.
+scripts/tmp/
+preview/

@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='5' fill='%23F4F1EA'/%3E%3Cpath d='M12 7v10M12 7c-2 0-3.5-1-4.5-1.5v9.5c1 .5 2.5 1.5 4.5 1.5M12 7c2 0 3.5-1 4.5-1.5v9.5c-1 .5-2.5 1.5-4.5 1.5' stroke='%23DC5B5B' stroke-width='1.6' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<title>Add a book - PERPUS</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,400&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<script src="https://cdn.tailwindcss.com?plugins=forms"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          cream: '#F4F1EA',
+          cardBg: '#EDEAE1',
+          lightCream: '#FAF9F5',
+          coral: '#DC5B5B',
+          coralDark: '#C74A4A',
+          coralText: '#B23C3C',
+          charcoal: '#1F2024',
+          secondary: '#68696E',
+          muted: '#6A6B70',
+          border: '#E4DFD5'
+        },
+        fontFamily: {
+          serif: ['"Cormorant Garamond"', 'Georgia', 'serif'],
+          sans: ['"Plus Jakarta Sans"', 'sans-serif']
+        }
+      }
+    }
+  }
+</script>
+
+<style>
+  html { -webkit-text-size-adjust: 100%; }
+
+  /* Same sidebar states as the shelf page, so the rail does not feel like a
+     different application on a second screen. */
+  .nav-item {
+    color: #68696E;
+    background: transparent;
+    cursor: pointer;
+    transition: color .18s ease, background-color .18s ease, transform .18s ease;
+  }
+  .nav-item:hover,
+  .nav-item:focus-visible {
+    color: #B23C3C;
+    background: rgba(220, 91, 91, 0.10);
+  }
+  .nav-item:active { transform: scale(0.94); }
+
+  .hover-nav {
+    transition: color .18s ease, background-color .18s ease, border-color .18s ease, transform .18s ease;
+  }
+  .hover-nav:hover,
+  .hover-nav:focus-visible {
+    color: #B23C3C;
+    background: rgba(220, 91, 91, 0.10);
+    border-color: rgba(220, 91, 91, 0.45);
+  }
+  .hover-nav:active { transform: scale(0.97); }
+
+  .brand-mark { color: #1F2024; transition: color .18s ease, transform .18s ease; }
+  .brand-mark:hover, .brand-mark:focus-visible { color: #B23C3C; transform: translateY(-1px); }
+
+  .custom-scroll::-webkit-scrollbar { height: 5px; width: 6px; }
+  .custom-scroll::-webkit-scrollbar-track { background: transparent; }
+  .custom-scroll::-webkit-scrollbar-thumb { background: #D9D4C7; border-radius: 9999px; }
+  .custom-scroll::-webkit-scrollbar-thumb:hover { background: #BCB6A7; }
+
+  /* Icon buttons keep a 44px hit area; the visible circle inside can stay small. */
+  .icon-btn {
+    min-width: 44px;
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+  }
+
+  /* A pressable genre uses the shelf's own pill language. The radio itself is
+     visually hidden but stays focusable, so arrow keys still move between
+     categories the way a native radio group does. */
+  .cat-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+    padding: 0 1rem;
+    border-radius: 9999px;
+    border: 1px solid #E4DFD5;
+    background: rgba(255, 255, 255, 0.70);
+    color: #68696E;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: color .18s ease, background-color .18s ease, border-color .18s ease;
+  }
+  .cat-pill:hover { color: #B23C3C; border-color: rgba(220, 91, 91, 0.45); }
+  .cat-radio:checked + .cat-pill {
+    color: #FFFFFF;
+    background: #C74A4A;
+    border-color: #C74A4A;
+  }
+  .cat-radio:checked + .cat-pill:hover { background: #B23C3C; border-color: #B23C3C; }
+  .cat-radio:focus-visible + .cat-pill {
+    outline: 2px solid #B23C3C;
+    outline-offset: 3px;
+  }
+
+  /* Coral as text failed WCAG AA on cream, so text uses the darker tone while
+     fills and borders keep the lighter coral. */
+  body .text-coral,
+  body .hover\:text-coral:hover { color: #B23C3C; }
+  body .placeholder-muted::placeholder { color: #6A6B70; opacity: 1; }
+
+  :focus-visible { outline: 2px solid #B23C3C; outline-offset: 3px; border-radius: 6px; }
+
+  /* The forms plugin ships its own blue focus ring (#2563EB) and clears the
+     outline. Blue does not exist in this palette, so every field is pinned to
+     the coral ring the rest of the app uses, and the outline is restored for
+     anyone who relies on it. */
+  #book-form input:not([type="radio"]):focus,
+  #book-form textarea:focus,
+  #book-form input[type="file"]:focus-visible {
+    outline: 2px solid #B23C3C;
+    outline-offset: 2px;
+    border-color: #B23C3C;
+    box-shadow: none;
+  }
+
+  @media (max-height: 820px) {
+    .rail { padding-top: .9rem; padding-bottom: .9rem; }
+    .rail nav { gap: .1rem; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; }
+    html { scroll-behavior: auto !important; }
+  }
+</style>
+</head>
+
+<body class="bg-[#ECE7DC] text-charcoal font-sans antialiased min-h-screen p-3 md:p-6 lg:p-8 flex justify-center">
+
+<div class="w-full max-w-[1400px] h-[92vh] min-h-[640px] my-auto bg-cream rounded-[36px] shadow-2xl flex overflow-hidden border border-[#ded8cb]/80">
+
+  <aside aria-label="Main navigation" class="rail w-[78px] md:w-[88px] flex-shrink-0 bg-cream border-r border-border/70 flex flex-col items-center justify-between py-6 z-20 overflow-y-auto">
+    <div class="flex flex-col items-center">
+      <a class="brand-mark icon-btn w-11 h-11 rounded-xl" href="index.html" aria-label="PERPUS home">
+        <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M4 5.5A1.5 1.5 0 0 1 5.5 4H10a2 2 0 0 1 2 2v13a1.7 1.7 0 0 0-1.7-1.7H4z"></path>
+          <path d="M20 5.5A1.5 1.5 0 0 0 18.5 4H14a2 2 0 0 0-2 2v13a1.7 1.7 0 0 1 1.7-1.7H20z"></path>
+        </svg>
+      </a>
+    </div>
+
+    <nav aria-label="Primary" class="flex flex-col items-center gap-1.5">
+      <a class="nav-item w-11 h-11 rounded-2xl flex items-center justify-center" href="index.html" aria-label="Home">
+        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M3 10.5 12 3l9 7.5V20a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 20z"></path>
+          <path d="M9.5 21.5v-8h5v8"></path>
+        </svg>
+      </a>
+
+      <a class="nav-item w-11 h-11 rounded-2xl flex items-center justify-center" href="index.html#shelf" aria-label="Library shelf">
+        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect x="4" y="4" width="16" height="16" rx="2"></rect>
+          <path d="M12 4v16"></path>
+        </svg>
+      </a>
+
+      <a class="nav-item w-11 h-11 rounded-2xl flex items-center justify-center" href="bookmarks.html" aria-label="Saved stories">
+        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path>
+        </svg>
+      </a>
+    </nav>
+
+    <div class="flex flex-col items-center">
+      <a class="nav-item icon-btn w-11 h-11 rounded-xl" href="add.html" aria-current="page" aria-label="Add a book">
+        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M12 5v14"></path><path d="M5 12h14"></path>
+        </svg>
+      </a>
+    </div>
+  </aside>
+
+  <div class="flex-1 flex flex-col h-full overflow-hidden bg-cream min-w-0">
+
+    <header class="px-6 md:pl-8 md:pr-[38px] pt-6 md:pt-7 pb-4 flex items-center justify-between gap-4 border-b border-border/40 flex-shrink-0">
+      <div class="min-w-0">
+        <p class="text-[11px] uppercase tracking-[0.18em] text-secondary">New entry</p>
+        <h1 class="font-serif text-2xl font-bold tracking-tight leading-tight mt-0.5">Add a book</h1>
+      </div>
+      <a href="index.html" class="hover-nav inline-flex items-center justify-center min-h-[44px] px-4 rounded-full border border-border/70 text-xs font-medium text-charcoal flex-shrink-0">
+        Back to shelf
+      </a>
+    </header>
+
+    <main class="flex-1 overflow-y-auto custom-scroll px-6 md:pl-8 md:pr-[38px] py-6">
+
+      <div class="grid lg:grid-cols-[minmax(0,1fr)_280px] gap-6 items-start">
+
+        <form id="book-form" class="space-y-5" novalidate>
+
+          <div id="form-error" class="hidden bg-[#FBEDED] border border-[#E9C4C4] rounded-xl px-4 py-3" role="alert">
+            <p class="text-xs font-semibold text-[#8E2F2F]" id="form-error-text"></p>
+          </div>
+
+          <div class="space-y-3.5">
+            <div>
+              <label for="f-title" class="block text-[11px] font-semibold uppercase tracking-wider text-secondary mb-1.5">Title</label>
+              <input id="f-title" name="title" type="text" required maxlength="300" autocomplete="off"
+                     class="w-full bg-white/70 border border-border rounded-xl px-3.5 py-2.5 text-sm text-charcoal placeholder-muted"
+                     placeholder="The book's name">
+              <p class="mt-1 text-[10.5px] text-secondary leading-snug">Long titles are split across the cover lines automatically.</p>
+            </div>
+
+            <div>
+              <label for="f-author" class="block text-[11px] font-semibold uppercase tracking-wider text-secondary mb-1.5">Author</label>
+              <input id="f-author" name="author" type="text" required maxlength="200" autocomplete="off"
+                     class="w-full bg-white/70 border border-border rounded-xl px-3.5 py-2.5 text-sm text-charcoal placeholder-muted"
+                     placeholder="Who wrote it">
+            </div>
+          </div>
+
+          <fieldset>
+            <legend class="block text-[11px] font-semibold uppercase tracking-wider text-secondary mb-2">Category</legend>
+            <div class="flex flex-wrap gap-2" role="radiogroup" aria-describedby="cat-note">
+              <label>
+                <input class="cat-radio sr-only" type="radio" name="catSlug" value="classic" required>
+                <span class="cat-pill">Classics</span>
+              </label>
+              <label>
+                <input class="cat-radio sr-only" type="radio" name="catSlug" value="fantasy">
+                <span class="cat-pill">Fantasy and lore</span>
+              </label>
+              <label>
+                <input class="cat-radio sr-only" type="radio" name="catSlug" value="graphic">
+                <span class="cat-pill">Graphic novels</span>
+              </label>
+              <label>
+                <input class="cat-radio sr-only" type="radio" name="catSlug" value="history">
+                <span class="cat-pill">Historical</span>
+              </label>
+            </div>
+            <p id="cat-note" class="mt-1.5 text-[10.5px] text-secondary leading-snug">These four match the shelf filters, so a new book is always reachable.</p>
+          </fieldset>
+
+          <div class="grid sm:grid-cols-2 gap-3.5">
+            <div>
+              <label for="f-series" class="block text-[11px] font-semibold uppercase tracking-wider text-secondary mb-1.5">Series <span class="font-normal normal-case tracking-normal">(optional)</span></label>
+              <input id="f-series" name="series" type="text" maxlength="200" autocomplete="off"
+                     class="w-full bg-white/70 border border-border rounded-xl px-3.5 py-2.5 text-sm text-charcoal placeholder-muted"
+                     placeholder="e.g. The Stormlight Archive">
+              <p class="mt-1 text-[10.5px] text-secondary leading-snug">Shown in small type at the top of the cover.</p>
+            </div>
+            <div>
+              <label for="f-pages" class="block text-[11px] font-semibold uppercase tracking-wider text-secondary mb-1.5">Pages <span class="font-normal normal-case tracking-normal">(optional)</span></label>
+              <input id="f-pages" name="pages" type="number" min="1" max="100000" inputmode="numeric"
+                     class="w-full bg-white/70 border border-border rounded-xl px-3.5 py-2.5 text-sm text-charcoal placeholder-muted"
+                     placeholder="e.g. 320">
+            </div>
+          </div>
+
+          <div>
+            <label for="f-blurb" class="block text-[11px] font-semibold uppercase tracking-wider text-secondary mb-1.5">Notes <span class="font-normal normal-case tracking-normal">(optional)</span></label>
+            <textarea id="f-blurb" name="blurb" rows="3" maxlength="2000"
+                      class="w-full bg-white/70 border border-border rounded-xl px-3.5 py-2.5 text-sm text-charcoal placeholder-muted resize-y"
+                      placeholder="A line or two about the book"></textarea>
+          </div>
+
+          <div class="pt-1 border-t border-border/60">
+            <label for="f-pdf" class="block text-[11px] font-semibold uppercase tracking-wider text-secondary mb-1.5 mt-4">PDF <span class="font-normal normal-case tracking-normal">(optional, up to 200 MB)</span></label>
+            <input id="f-pdf" name="pdf" type="file" accept=".pdf,application/pdf"
+                   class="block w-full text-xs text-secondary file:mr-3 file:cursor-pointer file:rounded-full file:border file:border-border file:bg-white/70 file:px-4 file:py-2.5 file:text-xs file:font-medium file:text-charcoal hover:file:text-coralText">
+            <p class="mt-1.5 text-[10.5px] text-secondary leading-snug" id="pdf-note">The file is stored on this server, not in the database.</p>
+          </div>
+
+          <div class="flex items-center gap-3 pt-1">
+            <button id="submit-btn" type="submit"
+                    class="inline-flex items-center justify-center min-h-[44px] px-6 rounded-full bg-coralDark text-white text-sm font-semibold transition-colors">
+              Add to shelf
+            </button>
+            <a href="index.html" class="hover-nav inline-flex items-center justify-center min-h-[44px] px-5 rounded-full border border-border/70 text-xs font-medium text-charcoal">
+              Cancel
+            </a>
+          </div>
+
+          <p id="form-status" class="sr-only" role="status" aria-live="polite"></p>
+        </form>
+
+        <aside id="form-aside" class="space-y-4">
+          <div class="bg-lightCream/70 border border-border/60 rounded-2xl p-4">
+            <p class="text-[11px] font-semibold uppercase tracking-wider text-secondary">What happens next</p>
+            <ol class="mt-2.5 space-y-2 text-[11.5px] text-secondary leading-snug list-decimal list-inside">
+              <li>The book gets a permanent address from its title.</li>
+              <li>Its cover is drawn from the title text, in a neutral tone.</li>
+              <li>The PDF, if you pick one, is attached after saving.</li>
+            </ol>
+          </div>
+
+          <div class="bg-lightCream/70 border border-border/60 rounded-2xl p-4">
+            <p class="text-[11px] font-semibold uppercase tracking-wider text-secondary">Save progress</p>
+            <div class="mt-3 h-1.5 rounded-full bg-[#EAE6DB] overflow-hidden">
+              <div id="progress-bar" class="h-full w-0 bg-coralDark transition-[width] duration-200"></div>
+            </div>
+            <p id="progress-text" class="mt-2 text-[11px] text-secondary">Not started yet.</p>
+          </div>
+        </aside>
+
+      </div>
+
+      <section id="done" class="hidden max-w-xl">
+        <div class="bg-lightCream/80 border border-border/60 rounded-2xl p-5">
+          <p class="text-[11px] uppercase tracking-[0.18em] text-secondary">Saved</p>
+          <h2 id="done-title" class="font-serif text-xl font-bold mt-1"></h2>
+          <p id="done-note" class="text-xs text-secondary leading-relaxed mt-1.5"></p>
+          <div class="flex flex-wrap items-center gap-3 mt-4">
+            <a id="done-open" href="index.html" class="inline-flex items-center justify-center min-h-[44px] px-5 rounded-full bg-coralDark text-white text-xs font-semibold">Open the book</a>
+            <a href="add.html" class="hover-nav inline-flex items-center justify-center min-h-[44px] px-5 rounded-full border border-border/70 text-xs font-medium text-charcoal">Add another</a>
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+</div>
+
+<script>
+(function () {
+  var form = document.getElementById('book-form');
+  var errBox = document.getElementById('form-error');
+  var errText = document.getElementById('form-error-text');
+  var submitBtn = document.getElementById('submit-btn');
+  var status = document.getElementById('form-status');
+  var done = document.getElementById('done');
+  var doneTitle = document.getElementById('done-title');
+  var doneNote = document.getElementById('done-note');
+  var doneOpen = document.getElementById('done-open');
+  var bar = document.getElementById('progress-bar');
+  var barText = document.getElementById('progress-text');
+  // Held after the book row is created, so a later PDF failure can point at the
+  // book that already exists instead of inviting a duplicate submit.
+  var savedBook = null;
+
+  function showError(message) {
+    errText.textContent = message;
+    errBox.classList.remove('hidden');
+    status.textContent = message;
+  }
+
+  function clearError() {
+    errBox.classList.add('hidden');
+    errText.textContent = '';
+  }
+
+  function bytes(n) {
+    if (n >= 1024 * 1024) return (n / (1024 * 1024)).toFixed(1) + ' MB';
+    return Math.max(1, Math.round(n / 1024)) + ' KB';
+  }
+
+  // The PDF is uploaded with XHR rather than fetch so a large file can report how
+  // far it has got. A 200 MB upload behind a bare spinner looks frozen.
+  function uploadPdf(slug, file, onProgress) {
+    return new Promise(function (resolve, reject) {
+      var xhr = new XMLHttpRequest();
+      xhr.open('POST', '/api/books/' + encodeURIComponent(slug) + '/pdf');
+      xhr.upload.addEventListener('progress', function (e) {
+        if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100));
+      });
+      xhr.addEventListener('load', function () {
+        var body = null;
+        try { body = JSON.parse(xhr.responseText); } catch (e) { /* not json */ }
+        if (xhr.status >= 200 && xhr.status < 300) return resolve(body);
+        reject(new Error((body && body.error) || 'The PDF upload failed.'));
+      });
+      xhr.addEventListener('error', function () {
+        reject(new Error('The PDF upload could not reach the server.'));
+      });
+      var data = new FormData();
+      data.append('file', file);
+      xhr.send(data);
+    });
+  }
+
+  form.addEventListener('submit', function (event) {
+    event.preventDefault();
+    clearError();
+
+    var title = document.getElementById('f-title').value.trim();
+    var author = document.getElementById('f-author').value.trim();
+    var catEl = form.querySelector('input[name="catSlug"]:checked');
+    var pagesRaw = document.getElementById('f-pages').value.trim();
+    var file = document.getElementById('f-pdf').files[0] || null;
+
+    if (!title) return showError('A title is needed before the book can be saved.');
+    if (!author) return showError('An author is needed before the book can be saved.');
+    if (!catEl) return showError('Pick one of the four categories so the shelf filter can find the book.');
+
+    var payload = {
+      title: title,
+      author: author,
+      catSlug: catEl.value,
+      series: document.getElementById('f-series').value.trim() || null,
+      pages: pagesRaw ? Number(pagesRaw) : null,
+      blurb: document.getElementById('f-blurb').value.trim() || null
+    };
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Saving...';
+    status.textContent = 'Saving the book details.';
+    bar.style.width = '0%';
+    barText.textContent = file ? 'Starting the PDF upload.' : 'No PDF to upload.';
+
+    fetch('/api/books', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    })
+      .then(function (res) {
+        return res.json().then(function (body) {
+          if (!res.ok) throw new Error(body.error || 'The book could not be saved.');
+          return body.book;
+        });
+      })
+      .then(function (book) {
+        savedBook = book;
+        if (!file) return { book: book, pdf: null };
+
+        barText.textContent = 'Uploading ' + file.name + ' (' + bytes(file.size) + ').';
+        return uploadPdf(book.slug, file, function (pct) {
+          bar.style.width = pct + '%';
+          barText.textContent = 'Uploading ' + file.name + ': ' + pct + '%.';
+          status.textContent = 'PDF upload ' + pct + ' percent.';
+        }).then(function (result) {
+          return { book: book, pdf: result };
+        });
+      })
+      .then(function (out) {
+        bar.style.width = '100%';
+        barText.textContent = out.pdf ? 'Book and PDF saved.' : 'Book saved. No PDF attached.';
+        status.textContent = 'Saved.';
+
+        form.classList.add('hidden');
+        done.classList.remove('hidden');
+        // The explanation beside the form describes a save that has already
+        // happened, and the progress bar is spent. Both are retired so the
+        // result is the only thing left on screen.
+        var aside = document.getElementById('form-aside');
+        if (aside) aside.classList.add('hidden');
+        doneTitle.textContent = out.book.title;
+        doneNote.textContent = '"' + out.book.title + '" by ' + out.book.author +
+          ' was added to the ' + out.book.cat + ' shelf' +
+          (out.pdf ? ' with its PDF attached.' : ' — no PDF attached.');
+        doneOpen.href = 'book.html?slug=' + encodeURIComponent(out.book.slug);
+        doneOpen.focus();
+      })
+      .catch(function (err) {
+        // fetch() rejects with a bare "Failed to fetch" when the server is down,
+        // which tells the reader nothing. Network faults get plain language.
+        var message = err && err.message === 'Failed to fetch'
+          ? 'The server could not be reached. Check that it is running, then try again.'
+          : (err.message || 'Something went wrong while saving.');
+        // If the book saved but the PDF failed, the book already exists. Saying
+        // "nothing was written" would be a lie, and letting the same form be
+        // resubmitted would write it twice, so the form is retired and the way
+        // forward is the book that is already there.
+        bar.style.width = '0%';
+        if (savedBook) {
+          showError('The book was saved, but its PDF did not upload: ' + message +
+            ' Open the book and attach the PDF again.');
+          barText.textContent = 'Book saved. PDF upload stopped.';
+          submitBtn.textContent = 'Open the saved book';
+          submitBtn.disabled = false;
+          submitBtn.type = 'button';
+          submitBtn.onclick = function () {
+            window.location.href = 'book.html?slug=' + encodeURIComponent(savedBook.slug);
+          };
+          return;
+        }
+        showError(message);
+        barText.textContent = 'Upload stopped.';
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Add to shelf';
+      });
+  });
+
+  form.addEventListener('input', clearError);
+})();
+</script>
+</body>
+</html>

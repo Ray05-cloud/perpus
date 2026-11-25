@@ -1,0 +1,575 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='5' fill='%23F4F1EA'/%3E%3Cpath d='M12 7v10M12 7c-2 0-3.5-1-4.5-1.5v9.5c1 .5 2.5 1.5 4.5 1.5M12 7c2 0 3.5-1 4.5-1.5v9.5c-1 .5-2.5 1.5-4.5 1.5' stroke='%23DC5B5B' stroke-width='1.6' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<title>PERPUS - Saved stories</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,400&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<script src="https://cdn.tailwindcss.com?plugins=forms"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          cream: '#F4F1EA',
+          cardBg: '#EDEAE1',
+          lightCream: '#FAF9F5',
+          coral: '#DC5B5B',
+          coralDark: '#C74A4A',
+          coralText: '#B23C3C',
+          charcoal: '#1F2024',
+          secondary: '#68696E',
+          muted: '#6A6B70',
+          border: '#E4DFD5'
+        },
+        fontFamily: {
+          serif: ['"Cormorant Garamond"', 'Georgia', 'serif'],
+          sans: ['"Plus Jakarta Sans"', 'sans-serif']
+        },
+        boxShadow: {
+          soft: '0 8px 24px -4px rgba(45, 40, 30, 0.05)'
+        }
+      }
+    }
+  }
+</script>
+
+<style>
+  html { -webkit-text-size-adjust: 100%; }
+
+  /* Sidebar: idle is quiet, hover/focus turns coral, active page stays coral. */
+  .nav-item {
+    color: #68696E;
+    background: transparent;
+    cursor: pointer;
+    transition: color .18s ease, background-color .18s ease, transform .18s ease;
+  }
+  .nav-item:hover,
+  .nav-item:focus-visible {
+    color: #B23C3C;
+    background: rgba(220, 91, 91, 0.10);
+  }
+  .nav-item:active { transform: scale(0.94); }
+  .nav-item[aria-current="page"] {
+    color: #FFFFFF;
+    background: #C74A4A;
+    box-shadow: 0 6px 14px -6px rgba(199, 74, 74, 0.6);
+  }
+  .nav-item[aria-current="page"]:hover,
+  .nav-item[aria-current="page"]:focus-visible {
+    color: #FFFFFF;
+    background: #B23C3C;
+  }
+  .nav-item[aria-disabled="true"] { color: #A9A8A4; cursor: not-allowed; }
+  .nav-item[aria-disabled="true"]:hover { color: #A9A8A4; background: transparent; }
+
+  .brand-mark { color: #1F2024; transition: color .18s ease, transform .18s ease; }
+  .brand-mark:hover, .brand-mark:focus-visible { color: #B23C3C; transform: translateY(-1px); }
+
+  .custom-scroll::-webkit-scrollbar { height: 5px; width: 6px; }
+  .custom-scroll::-webkit-scrollbar-track { background: transparent; }
+  .custom-scroll::-webkit-scrollbar-thumb { background: #D9D4C7; border-radius: 9999px; }
+  .custom-scroll::-webkit-scrollbar-thumb:hover { background: #BCB6A7; }
+
+  .icon-btn {
+    min-width: 44px;
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+  }
+
+  /* Saved rows keep the shelf's cover language, scaled down to a spine thumb. */
+  .thumb {
+    position: relative;
+    width: 56px;
+    aspect-ratio: 1 / 1.45;
+    border-radius: 4px;
+    overflow: hidden;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 8px 16px -6px rgba(35, 30, 20, 0.35), 0 3px 6px -3px rgba(0, 0, 0, 0.12);
+  }
+  .thumb::after {
+    content: '';
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 6px;
+    background: linear-gradient(90deg, rgba(255,255,255,0.26) 0%, rgba(255,255,255,0.02) 45%, rgba(0,0,0,0.22) 100%);
+    pointer-events: none;
+  }
+  .thumb span {
+    font-family: "Cormorant Garamond", Georgia, serif;
+    font-size: 18px;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.9);
+    letter-spacing: 0.02em;
+  }
+
+  /* Phone widths: the rail eats 78px, so the cover gives its space to the text. */
+  @media (max-width: 640px) {
+    .thumb { width: 44px; }
+    .thumb span { font-size: 15px; }
+  }
+
+  .c-beauty   { background: linear-gradient(180deg, #0A192F 0%, #0D2A4A 55%, #040D1A 100%); }
+  .c-fire     { background: linear-gradient(180deg, #C73E1D 0%, #630B0B 55%, #1A0505 100%); }
+  .c-narnia   { background: linear-gradient(180deg, #1B2B48 0%, #0F172A 60%, #080D19 100%); }
+  .c-deadpool { background: linear-gradient(180deg, #B32424 0%, #7D1616 55%, #450A0A 100%); }
+  .c-hp       { background: linear-gradient(180deg, #1E4D3D 0%, #123028 60%, #0A1A15 100%); }
+  .c-lost     { background: linear-gradient(180deg, #255242 0%, #163528 60%, #0C1F18 100%); }
+
+  /* Loading placeholder: shown until the saved list has been read. */
+  .skeleton {
+    background: linear-gradient(90deg, #E9E4D9 25%, #F1EDE3 37%, #E9E4D9 63%);
+    background-size: 400% 100%;
+    animation: shimmer 1.4s ease infinite;
+    border-radius: 6px;
+  }
+  @keyframes shimmer {
+    0% { background-position: 100% 50%; }
+    100% { background-position: 0 50%; }
+  }
+
+  dialog::backdrop { background: rgba(31, 32, 36, 0.55); }
+
+  :focus-visible { outline: 2px solid #B23C3C; outline-offset: 3px; border-radius: 6px; }
+
+  /* Contrast: coral as text failed WCAG AA on cream, so text uses the darker
+     tone while fills and borders keep the lighter coral. */
+  body .text-coral,
+  body .hover\:text-coral:hover,
+  body .group:hover .group-hover\:text-coral { color: #B23C3C; }
+  body .placeholder-muted::placeholder { color: #6A6B70; opacity: 1; }
+
+  @media (max-height: 820px) {
+    .rail { padding-top: .9rem; padding-bottom: .9rem; }
+    .rail nav { gap: .1rem; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; }
+    html { scroll-behavior: auto !important; }
+  }
+</style>
+</head>
+
+<body class="bg-[#ECE7DC] text-charcoal font-sans antialiased min-h-screen p-3 md:p-6 lg:p-8 flex justify-center">
+
+<div class="w-full max-w-[1400px] h-[92vh] min-h-[640px] my-auto bg-cream rounded-[36px] shadow-2xl flex overflow-hidden border border-[#ded8cb]/80">
+
+  <!-- Sidebar: same rail as the other pages, coral on hover -->
+  <aside aria-label="Main navigation" class="rail w-[78px] md:w-[88px] flex-shrink-0 bg-cream border-r border-border/70 flex flex-col items-center justify-between py-6 z-20 overflow-y-auto">
+    <div class="flex flex-col items-center">
+      <a class="brand-mark icon-btn w-11 h-11 rounded-xl" href="index.html" aria-label="PERPUS home">
+        <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M4 5.5A1.5 1.5 0 0 1 5.5 4H10a2 2 0 0 1 2 2v13a1.7 1.7 0 0 0-1.7-1.7H4z"></path>
+          <path d="M20 5.5A1.5 1.5 0 0 0 18.5 4H14a2 2 0 0 0-2 2v13a1.7 1.7 0 0 1 1.7-1.7H20z"></path>
+        </svg>
+      </a>
+    </div>
+
+    <nav aria-label="Primary" class="flex flex-col items-center gap-1.5">
+      <a class="nav-item w-11 h-11 rounded-2xl flex items-center justify-center" href="index.html" aria-label="Home">
+        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M3 10.5 12 3l9 7.5V20a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 20z"></path>
+          <path d="M9.5 21.5v-8h5v8"></path>
+        </svg>
+      </a>
+
+      <a class="nav-item w-11 h-11 rounded-2xl flex items-center justify-center" href="index.html#shelf" aria-label="Library shelf">
+        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect x="4" y="4" width="16" height="16" rx="2"></rect>
+          <path d="M12 4v16"></path>
+        </svg>
+      </a>
+
+      <a class="nav-item w-11 h-11 rounded-2xl flex items-center justify-center" href="bookmarks.html" aria-current="page" aria-label="Saved stories">
+        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path>
+        </svg>
+      </a>
+    </nav>
+
+    <div class="flex flex-col items-center">
+      <a class="nav-item icon-btn w-11 h-11 rounded-xl" href="add.html" aria-label="Add a book">
+        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M12 5v14"></path><path d="M5 12h14"></path>
+        </svg>
+      </a>
+    </div>
+  </aside>
+
+  <!-- Workspace -->
+  <div class="flex-1 flex flex-col h-full overflow-hidden bg-cream min-w-0">
+
+    <header class="px-6 md:pl-8 md:pr-[38px] pt-6 md:pt-7 pb-4 flex items-center justify-between gap-4 border-b border-border/40">
+      <div class="relative w-full max-w-md">
+        <span class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-secondary">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+            <circle cx="11" cy="11" r="7"></circle>
+            <path d="m21 21-4.35-4.35"></path>
+          </svg>
+        </span>
+        <label class="sr-only" for="search">Search saved stories</label>
+        <input id="search" type="search" autocomplete="off"
+               class="w-full bg-transparent border-0 text-[13.5px] placeholder-muted pl-10 pr-4 py-3 focus:ring-0 focus:outline-none text-charcoal"
+               placeholder="Search stories">
+      </div>
+
+      <div class="flex items-center gap-4 flex-shrink-0">
+        <a href="index.html#shelf" class="hidden sm:inline-flex items-center gap-1.5 min-h-[44px] text-xs text-secondary hover:text-coral transition-colors">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M19 12H5M12 19l-7-7 7-7"></path>
+          </svg>
+          Back to shelf
+        </a>
+      </div>
+    </header>
+
+    <main class="flex-1 overflow-y-auto custom-scroll px-6 md:px-8 py-6 pb-10 [scrollbar-gutter:stable]">
+
+      <section aria-labelledby="saved-title">
+        <div class="flex flex-wrap items-start justify-between gap-4">
+          <div class="space-y-2 min-w-0">
+            <h1 id="saved-title" class="font-serif text-3xl sm:text-4xl leading-tight font-semibold tracking-tight">Saved stories</h1>
+            <p class="text-sm text-secondary leading-relaxed">
+              Everything you marked while reading.
+            </p>
+            <p id="saved-count" class="text-xs text-secondary" role="status" aria-live="polite"></p>
+          </div>
+          <button type="button" id="clear-all"
+                  class="inline-flex items-center min-h-[44px] px-4 rounded-full border border-border/70 bg-white/60 text-xs font-medium text-secondary hover:text-coral hover:border-coral/50 transition-colors">
+            Clear all
+          </button>
+        </div>
+      </section>
+
+      <!-- Loading placeholder, replaced as soon as the list is read -->
+      <div id="state-loading" class="mt-6 space-y-3" aria-hidden="true">
+        <div class="flex items-center gap-4 bg-lightCream/70 border border-border/60 rounded-2xl p-4">
+          <div class="skeleton w-14 h-20"></div>
+          <div class="flex-1 space-y-2">
+            <div class="skeleton h-3.5 w-2/3"></div>
+            <div class="skeleton h-3 w-1/3"></div>
+          </div>
+        </div>
+        <div class="flex items-center gap-4 bg-lightCream/70 border border-border/60 rounded-2xl p-4">
+          <div class="skeleton w-14 h-20"></div>
+          <div class="flex-1 space-y-2">
+            <div class="skeleton h-3.5 w-1/2"></div>
+            <div class="skeleton h-3 w-1/4"></div>
+          </div>
+        </div>
+      </div>
+
+      <ul id="saved-list" class="mt-6 space-y-3 hidden"></ul>
+
+      <section id="state-empty" class="mt-6 hidden bg-lightCream/70 border border-border/60 rounded-3xl p-8 text-center">
+        <h2 class="font-serif text-xl font-bold tracking-tight">Nothing saved yet</h2>
+        <p class="mt-2 text-sm text-secondary leading-relaxed max-w-sm mx-auto">
+          Open a book and press Save to bookmarks. It lands here, ready when you are.
+        </p>
+        <a href="index.html#shelf" class="mt-5 inline-flex items-center justify-center min-h-[44px] bg-charcoal hover:bg-black text-white px-5 rounded-full text-xs font-medium tracking-wide transition-colors active:scale-95">
+          Browse the shelf
+        </a>
+      </section>
+
+      <section id="state-no-match" class="mt-6 hidden bg-lightCream/70 border border-border/60 rounded-3xl p-8 text-center">
+        <h2 class="font-serif text-xl font-bold tracking-tight">No saved story matches that</h2>
+        <p class="mt-2 text-sm text-secondary leading-relaxed max-w-sm mx-auto" id="no-match-detail">
+          Try a shorter title or the author name.
+        </p>
+        <button type="button" id="reset-filter"
+                class="mt-5 inline-flex items-center justify-center min-h-[44px] bg-charcoal hover:bg-black text-white px-5 rounded-full text-xs font-medium tracking-wide transition-colors active:scale-95">
+          Clear the search
+        </button>
+      </section>
+
+      <section id="state-error" class="mt-6 hidden bg-[#F3E2E0] border border-coral/30 rounded-3xl p-8">
+        <h2 class="font-serif text-xl font-bold tracking-tight">Your saved list could not be read</h2>
+        <p class="mt-2 text-sm text-secondary leading-relaxed max-w-md">
+          This browser is blocking local storage for the page, so bookmarks cannot be kept. Allow site data here, then reload.
+        </p>
+        <button type="button" id="retry-read"
+                class="mt-5 inline-flex items-center justify-center min-h-[44px] bg-charcoal hover:bg-black text-white px-5 rounded-full text-xs font-medium tracking-wide transition-colors active:scale-95">
+          Try again
+        </button>
+      </section>
+
+      <p id="row-status" class="mt-4 max-w-none text-[11px] text-coral min-h-[16px]" role="status" aria-live="polite"></p>
+    </main>
+
+    <footer class="h-11 px-6 md:pl-8 md:pr-[38px] border-t border-border/60 flex items-center justify-between gap-4 text-xs text-secondary bg-cream/90 flex-shrink-0">
+      <p class="text-[11.5px] truncate">Kept on this device only.</p>
+      <p class="font-medium text-[11.5px] text-charcoal flex-shrink-0">
+        <span id="footer-count" class="font-semibold text-charcoal">0</span> saved
+      </p>
+    </footer>
+  </div>
+</div>
+
+<!-- Clearing is destructive, so it asks first -->
+<dialog id="confirm-clear" aria-labelledby="confirm-title"
+        class="w-[min(92vw,420px)] rounded-3xl bg-cream text-charcoal border border-border p-6 shadow-2xl">
+  <h2 id="confirm-title" class="font-serif text-xl font-bold tracking-tight">Remove all saved stories?</h2>
+  <p id="confirm-body" class="mt-2 text-sm text-secondary leading-relaxed">
+    This clears the whole list from this device. It cannot be undone.
+  </p>
+  <div class="mt-6 flex items-center justify-end gap-3">
+    <button type="button" id="confirm-cancel" autofocus
+            class="inline-flex items-center min-h-[44px] px-4 rounded-full border border-border bg-white/70 text-xs font-medium text-charcoal hover:border-coral/50 hover:text-coral transition-colors">
+      Keep them
+    </button>
+    <button type="button" id="confirm-remove"
+            class="inline-flex items-center min-h-[44px] px-5 rounded-full bg-coralDark hover:bg-[#B23C3C] text-white text-xs font-medium transition-colors active:scale-95">
+      Remove all
+    </button>
+  </div>
+</dialog>
+
+<script src="books.js"></script>
+<script src="saved.js"></script>
+<script>
+(function () {
+  var listEl = document.getElementById('saved-list');
+  var loadingEl = document.getElementById('state-loading');
+  var emptyEl = document.getElementById('state-empty');
+  var noMatchEl = document.getElementById('state-no-match');
+  var noMatchDetail = document.getElementById('no-match-detail');
+  var errorEl = document.getElementById('state-error');
+  var countEl = document.getElementById('saved-count');
+  var footerCount = document.getElementById('footer-count');
+  var search = document.getElementById('search');
+  var rowStatus = document.getElementById('row-status');
+  var clearBtn = document.getElementById('clear-all');
+  var dialog = document.getElementById('confirm-clear');
+  var confirmBody = document.getElementById('confirm-body');
+
+  var saved = [];
+  var broken = false;
+
+  function formatDate(iso) {
+    if (!iso) return 'Saved earlier';
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return 'Saved earlier';
+    var text = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }).format(d);
+    return 'Saved ' + text.replace(/ /g, '\u00A0');
+  }
+
+  function initials(title) {
+    var words = String(title || '').split(/\s+/).filter(function (w) {
+      return w && w.charAt(0) === w.charAt(0).toUpperCase();
+    });
+    var a = (words[0] || '?').charAt(0);
+    var b = (words[1] || '').charAt(0);
+    return (a + b).toUpperCase();
+  }
+
+  function buildRow(item, index) {
+    var li = document.createElement('li');
+    li.className = 'group flex flex-wrap sm:flex-nowrap items-start sm:items-center gap-x-4 gap-y-3 bg-lightCream/80 border border-border/60 rounded-2xl p-4 hover:border-border transition-colors';
+
+    var thumb = document.createElement('div');
+    thumb.className = 'thumb ' + (item.cover || 'c-hp');
+    thumb.setAttribute('aria-hidden', 'true');
+    var mark = document.createElement('span');
+    mark.textContent = initials(item.title);
+    thumb.appendChild(mark);
+
+    var body = document.createElement('div');
+    body.className = 'flex-1 min-w-0 basis-0';
+
+    var head = document.createElement('div');
+    head.className = 'flex flex-wrap items-center gap-2';
+
+    var title = document.createElement('h2');
+    title.className = 'font-serif text-lg font-bold leading-snug line-clamp-2 max-w-full';
+    title.textContent = item.title;
+
+    head.appendChild(title);
+
+    if (item.cat) {
+      var cat = document.createElement('span');
+      cat.className = 'text-[11px] font-semibold tracking-wide uppercase px-2 py-0.5 rounded-full bg-[#EAE6DB] text-charcoal/80 whitespace-nowrap';
+      cat.textContent = item.cat;
+      head.appendChild(cat);
+    }
+
+    var meta = document.createElement('p');
+    meta.className = 'text-[12.5px] text-secondary mt-0.5 leading-snug break-words';
+    meta.textContent = (item.author || 'Unknown author') + ' · ' + formatDate(item.savedAt);
+
+    var note = document.createElement('p');
+    note.className = 'text-[11.5px] text-secondary mt-1';
+    note.textContent = item.series || '';
+
+    body.appendChild(head);
+    body.appendChild(meta);
+    if (item.series) body.appendChild(note);
+
+    var actions = document.createElement('div');
+    actions.className = 'flex items-center gap-3 flex-shrink-0 w-full sm:w-auto justify-end sm:justify-start';
+
+    var open = document.createElement('a');
+    open.href = window.PerpusBooks ? window.PerpusBooks.url(item.slug) : 'book.html?slug=' + encodeURIComponent(item.slug);
+    open.className = 'inline-flex items-center min-h-[44px] px-3 text-xs font-medium text-charcoal hover:text-coral transition-colors';
+    open.textContent = 'Open';
+
+    var remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'icon-btn rounded-full text-secondary hover:text-coral transition-colors';
+    remove.setAttribute('aria-label', 'Remove ' + item.title + ' from saved stories');
+    remove.title = 'Remove from saved stories';
+    remove.dataset.slug = item.slug;
+    remove.innerHTML = '<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"></path></svg>';
+
+    actions.appendChild(open);
+    actions.appendChild(remove);
+
+    li.appendChild(thumb);
+    li.appendChild(body);
+    li.appendChild(actions);
+    li.dataset.index = String(index);
+
+    return li;
+  }
+
+  function render() {
+    var q = (search.value || '').trim().toLowerCase();
+    var shown = saved.filter(function (item) {
+      if (!q) return true;
+      return (item.title || '').toLowerCase().indexOf(q) !== -1 ||
+             (item.author || '').toLowerCase().indexOf(q) !== -1;
+    });
+
+    listEl.textContent = '';
+    shown.forEach(function (item, i) {
+      listEl.appendChild(buildRow(item, i));
+    });
+
+    footerCount.textContent = String(saved.length);
+
+    loadingEl.classList.add('hidden');
+    errorEl.classList.toggle('hidden', !broken);
+    listEl.classList.toggle('hidden', broken || shown.length === 0);
+    emptyEl.classList.toggle('hidden', broken || saved.length > 0);
+    noMatchEl.classList.toggle('hidden', broken || saved.length === 0 || shown.length > 0);
+    clearBtn.classList.toggle('hidden', broken || saved.length === 0);
+    clearBtn.disabled = broken || saved.length === 0;
+
+    if (broken || saved.length === 0) {
+      countEl.textContent = '';
+      countEl.classList.add('hidden');
+    } else if (shown.length === saved.length) {
+      countEl.classList.remove('hidden');
+      countEl.textContent = saved.length === 1 ? '1 story saved.' : saved.length + ' stories saved.';
+    } else {
+      countEl.classList.remove('hidden');
+      countEl.textContent = shown.length + ' of ' + saved.length +
+        (saved.length === 1 ? ' story matches.' : ' stories match.');
+    }
+
+    if (shown.length === 0 && saved.length > 0 && q) {
+      noMatchDetail.textContent = 'Nothing saved matches "' + search.value.trim() + '". Try a shorter title or the author name.';
+    }
+  }
+
+  function load() {
+    broken = false;
+    if (!window.PerpusSaved || !window.PerpusSaved.available()) {
+      broken = true;
+      saved = [];
+      render();
+      return;
+    }
+    try {
+      saved = window.PerpusSaved.read();
+    } catch (e) {
+      broken = true;
+      saved = [];
+    }
+    render();
+  }
+
+  search.addEventListener('input', render);
+
+  document.getElementById('reset-filter').addEventListener('click', function () {
+    search.value = '';
+    render();
+    search.focus();
+  });
+
+  document.getElementById('retry-read').addEventListener('click', function () {
+    load();
+    if (!broken) rowStatus.textContent = 'Saved list reloaded.';
+  });
+
+  listEl.addEventListener('click', function (event) {
+    var btn = event.target.closest('button[data-slug]');
+    if (!btn) return;
+    var slug = btn.dataset.slug;
+    var gone = saved.filter(function (item) { return item.slug === slug; })[0];
+    var wasIndex = saved.findIndex(function (item) { return item.slug === slug; });
+    saved = window.PerpusSaved.remove(slug);
+    render();
+    rowStatus.textContent = gone ? gone.title + ' removed from saved stories.' : 'Story removed.';
+
+    // The removed row took the focus with it, so hand it to the next row or the search.
+    var rows = listEl.querySelectorAll('button[data-slug]');
+    if (rows.length) {
+      rows[Math.min(wasIndex, rows.length - 1)].focus();
+    } else {
+      search.focus();
+    }
+  });
+
+  clearBtn.addEventListener('click', function () {
+    if (saved.length === 0) return;
+    confirmBody.textContent = 'This clears ' + saved.length +
+      (saved.length === 1 ? ' saved story' : ' saved stories') +
+      ' from this device. It cannot be undone.';
+    document.getElementById('confirm-cancel').textContent = saved.length === 1 ? 'Keep it' : 'Keep them';
+    if (typeof dialog.showModal === 'function') {
+      dialog.showModal();
+    } else {
+      dialog.setAttribute('open', '');
+    }
+  });
+
+  document.getElementById('confirm-cancel').addEventListener('click', function () {
+    dialog.close();
+  });
+
+  document.getElementById('confirm-remove').addEventListener('click', function () {
+    window.PerpusSaved.clear();
+    saved = [];
+    dialog.close();
+    render();
+    rowStatus.textContent = 'Saved list cleared.';
+
+    // Clear all is hidden once the list is empty, so focus moves to the search field.
+    search.focus();
+  });
+
+  dialog.addEventListener('click', function (event) {
+    if (event.target === dialog) dialog.close();
+  });
+
+  window.addEventListener('storage', function (event) {
+    if (event.key === window.PerpusSaved.KEY) load();
+  });
+
+  load();
+})();
+</script>
+</body>
+</html>
