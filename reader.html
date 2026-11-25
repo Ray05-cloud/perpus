@@ -363,6 +363,10 @@
             <span class="text-[11px] text-secondary tabular-nums">/ <span id="page-total">0</span></span>
           </div>
 
+          <!-- Percent of the book read. Sits beside the page counter because that
+               is what it is: the same position, as a share of the whole. -->
+          <span id="read-percent" class="text-[11px] font-semibold text-coralText tabular-nums flex-shrink-0"></span>
+
           <div class="hidden sm:flex items-center gap-2 flex-1 min-w-0 px-1">
             <span class="text-[10px] text-muted tabular-nums flex-shrink-0">1</span>
             <label class="sr-only" for="page-slider">Page position</label>
@@ -509,6 +513,7 @@ const dom = {
   next: el('page-next'),
   jump: el('page-jump'),
   total: el('page-total'),
+  readPercent: el('read-percent'),
   slider: el('page-slider'),
   sliderMax: el('slider-max'),
   zoomOut: el('zoom-out'),
@@ -859,6 +864,13 @@ function syncIndicators() {
   dom.sliderMax.textContent = String(total);
   dom.zoomLevel.textContent = state.zoom + '%';
 
+  // Rounded exactly the way the server does it (withPercent in server.js), so
+  // the number here and the number on the shelf cannot disagree.
+  if (dom.readPercent) {
+    const percent = total ? Math.min(100, Math.round((state.page / total) * 100)) : 0;
+    dom.readPercent.textContent = total ? percent + '%' : '';
+  }
+
   // In a spread two pages are on screen; naming the second one avoids showing a
   // counter that disagrees with what is visible.
   const showingTwo = state.spread && last !== state.page;
@@ -925,7 +937,14 @@ async function saveProgress() {
     await jsonFetch('/api/books/' + encodeURIComponent(slug) + '/progress', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ page: state.page, zoom: state.zoom, spread: state.spread })
+      // totalPages goes with every save: the server needs it to turn the page
+      // number into a percentage, and only the open PDF knows it.
+      body: JSON.stringify({
+        page: state.page,
+        zoom: state.zoom,
+        spread: state.spread,
+        totalPages: state.numPages || null
+      })
     });
   } catch (err) {
     // Losing the position is not worth interrupting reading for.
