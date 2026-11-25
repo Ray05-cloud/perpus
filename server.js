@@ -6,7 +6,7 @@
 import { createServer } from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
 import { createReadStream } from 'node:fs';
-import { randomUUID } from 'node:crypto';
+import { randomUUID, timingSafeEqual } from 'node:crypto';
 import { extname, join, normalize, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { pool, migrate } from './db/index.js';
@@ -69,6 +69,41 @@ function sendJson(res, status, body) {
     'Cache-Control': 'no-store'
   });
   res.end(payload);
+}
+
+/*
+  Writes are admin-only. The shelf is public, so without this anyone who found
+  the URL could add or delete books — proven on the live site before this guard
+  existed.
+
+  Fail closed: if ADMIN_PASSWORD is unset the write is refused rather than
+  allowed. An unset secret must never mean "open to everyone".
+*/
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '';
+const ADMIN_HEADER = 'x-admin-password';
+
+function passwordMatches(given) {
+  if (!ADMIN_PASSWORD || typeof given !== 'string' || !given) return false;
+  const a = Buffer.from(given);
+  const b = Buffer.from(ADMIN_PASSWORD);
+  // timingSafeEqual throws on length mismatch, so compare lengths first. The
+  // length itself is not a secret worth protecting here.
+  if (a.length !== b.length) return false;
+  return timingSafeEqual(a, b);
+}
+
+// Returns true when the caller may write. Sends the 401 itself so each route
+// stays a one-liner.
+function denyUnlessAdmin(req, res) {
+  if (!ADMIN_PASSWORD) {
+    sendJson(res, 503, {
+      error: 'This site is read-only until ADMIN_PASSWORD is set on the server.'
+    });
+    return true;
+  }
+  if (passwordMatches(req.headers[ADMIN_HEADER])) return false;
+  sendJson(res, 401, { error: 'An admin password is required for this action.' });
+  return true;
 }
 
 function readBody(req, limit = 8 * 1024) {
@@ -438,6 +473,7 @@ async function handleApi(req, res, url) {
   }
 
   if (path === '/api/books' && req.method === 'POST') {
+    if (denyUnlessAdmin(req, res)) return;
     let body;
     try {
       body = await readBody(req);
@@ -453,6 +489,7 @@ async function handleApi(req, res, url) {
   // row, the PDF on disk, and any bookmark pointing at the slug. The bookmark of a
   // deleted book would otherwise open a page that no longer exists.
   if (path.startsWith('/api/books/') && req.method === 'DELETE' && !path.endsWith('/pdf')) {
+    if (denyUnlessAdmin(req, res)) return;
     const slug = decodeURIComponent(path.slice('/api/books/'.length));
     if (!/^[a-z0-9-]{1,64}$/i.test(slug)) return sendJson(res, 400, { error: 'Bad slug' });
 
@@ -493,6 +530,7 @@ async function handleApi(req, res, url) {
   // failed upload never leaves a half-created record.
   const pdfMatch = path.match(/^\/api\/books\/([a-z0-9-]{1,64})\/pdf$/i);
   if (pdfMatch && req.method === 'POST') {
+    if (denyUnlessAdmin(req, res)) return;
     const slug = pdfMatch[1];
     const book = await getBook(slug);
     if (!book) return sendJson(res, 404, { error: 'No such book' });
@@ -575,6 +613,7 @@ async function handleApi(req, res, url) {
   }
 
   if (pdfMatch && req.method === 'DELETE') {
+    if (denyUnlessAdmin(req, res)) return;
     const slug = pdfMatch[1];
     const book = await getBook(slug);
     if (!book) return sendJson(res, 404, { error: 'No such book' });

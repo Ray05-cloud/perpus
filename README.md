@@ -41,6 +41,11 @@ where uploaded PDFs are written (defaults to `storage/pdf/`).
 | `DELETE /api/books/:slug` | Delete book, its PDF, and its bookmarks (409 for the eight seed books) |
 | `GET/POST/DELETE /api/saved` | Visitor bookmarks, scoped by the `perpus_vid` cookie |
 
+Writes (`POST`/`DELETE` on books and PDFs) require the `x-admin-password`
+header to match `ADMIN_PASSWORD`. If `ADMIN_PASSWORD` is unset the server
+refuses every write with `503` rather than allowing them — a public URL must
+never default to open. Reads stay public.
+
 ## Deploy
 
 Pushes to `main` deploy automatically to Railway. Persistent uploads need the
