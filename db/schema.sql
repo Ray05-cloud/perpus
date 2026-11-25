@@ -97,6 +97,17 @@ create table if not exists reading_progress (
   primary key (visitor_id, slug)
 );
 
+-- Percentage and "finished" need the page count, which the reader only knows
+-- once it has opened the PDF. total_pages is therefore written with each save.
+-- finished_at is set once and never cleared: going back to page 3 of a book you
+-- have already read to the end does not un-finish it.
+alter table reading_progress add column if not exists total_pages integer;
+alter table reading_progress add column if not exists finished_at timestamptz;
+
+-- The home page asks for every book this visitor has touched, newest first.
+create index if not exists reading_progress_visitor_updated_idx
+  on reading_progress (visitor_id, updated_at desc);
+
 create table if not exists notes (
   id          bigint generated always as identity primary key,
   visitor_id  text        not null,

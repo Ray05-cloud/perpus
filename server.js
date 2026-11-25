@@ -314,6 +314,15 @@ function validateBook(body) {
   };
 }
 
+// Percent is derived, never stored: page and total are the facts, so a rounded
+// number cannot drift out of sync with them.
+function withPercent(row) {
+  const total = Number.isFinite(row.totalPages) && row.totalPages > 0 ? row.totalPages : null;
+  const page = Number.isFinite(row.page) ? row.page : 1;
+  const percent = total ? Math.min(100, Math.round((page / total) * 100)) : null;
+  return { ...row, percent, finished: Boolean(row.finishedAt) };
+}
+
 async function handleApi(req, res, url) {
   const visitor = visitorId(req, res);
   const path = url.pathname;
@@ -434,12 +443,13 @@ async function handleApi(req, res, url) {
 
     if (req.method === 'GET') {
       const { rows } = await pool.query(
-        `select page, zoom, spread, updated_at as "updatedAt"
+        `select page, zoom, spread, total_pages as "totalPages",
+                finished_at as "finishedAt", updated_at as "updatedAt"
            from reading_progress
           where visitor_id = $1 and slug = $2`,
         [visitor, slug]
       );
-      return sendJson(res, 200, { progress: rows[0] ?? null });
+      return sendJson(res, 200, { progress: rows[0] ? withPercent(rows[0]) : null });
     }
 
     if (req.method === 'PUT' || req.method === 'POST') {
@@ -460,19 +470,63 @@ async function handleApi(req, res, url) {
       const zoom = Number.isFinite(Number(body.zoom)) ? Math.round(Number(body.zoom)) : null;
       const spread = Boolean(body.spread);
 
+      /*
+        The page count comes from the PDF the reader has open, so the client
+        sends it with every save. It is optional: an older cached reader keeps
+        working, and a save without it stores a page but no percentage.
+
+        finished_at is set once and never cleared. Re-reading a finished book
+        from page 1 must not make the shelf claim it is unread.
+      */
+      const totalPages = Number.isInteger(Number(body.totalPages)) && Number(body.totalPages) > 0
+        ? Number(body.totalPages)
+        : null;
+
       const { rows } = await pool.query(
-        `insert into reading_progress (visitor_id, slug, page, zoom, spread, updated_at)
-              values ($1, $2, $3, $4, $5, now())
+        `insert into reading_progress
+                (visitor_id, slug, page, zoom, spread, total_pages, finished_at, updated_at)
+              values ($1, $2, $3, $4, $5, $6,
+                      case when $6::integer is not null and $3::integer >= $6::integer
+                           then now() end,
+                      now())
          on conflict (visitor_id, slug) do update
-                 set page = excluded.page,
-                     zoom = excluded.zoom,
-                     spread = excluded.spread,
-                     updated_at = now()
-           returning page, zoom, spread, updated_at as "updatedAt"`,
-        [visitor, slug, page, zoom, spread]
+                 set page        = excluded.page,
+                     zoom        = excluded.zoom,
+                     spread      = excluded.spread,
+                     total_pages = coalesce(excluded.total_pages, reading_progress.total_pages),
+                     finished_at = case
+                                     when reading_progress.finished_at is not null
+                                       then reading_progress.finished_at
+                                     when excluded.total_pages is not null
+                                      and excluded.page >= excluded.total_pages
+                                       then now()
+                                     else reading_progress.finished_at
+                                   end,
+                     updated_at  = now()
+           returning page, zoom, spread, total_pages as "totalPages",
+                     finished_at as "finishedAt", updated_at as "updatedAt"`,
+        [visitor, slug, page, zoom, spread, totalPages]
       );
-      return sendJson(res, 200, { progress: rows[0] });
+      return sendJson(res, 200, { progress: withPercent(rows[0]) });
     }
+  }
+
+  // Every book this visitor has opened, newest first. The home page builds its
+  // "continue reading" strip and the finished count from this.
+  if (path === '/api/progress' && req.method === 'GET') {
+    const { rows } = await pool.query(
+      `select p.slug, p.page, p.total_pages as "totalPages",
+              p.finished_at as "finishedAt", p.updated_at as "updatedAt",
+              b.title, b.author, b.cover
+         from reading_progress p
+         join books b on b.slug = p.slug
+        where p.visitor_id = $1
+          and (b.owner_id is null or b.owner_id = $1)
+        order by p.updated_at desc
+        limit 50`,
+      [visitor]
+    );
+    return sendJson(res, 200, { progress: rows.map(withPercent) });
   }
 
   if (path === '/api/books' && req.method === 'POST') {
