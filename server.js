@@ -744,7 +744,7 @@ async function handleApi(req, res, url) {
   return sendJson(res, 404, { error: 'No such endpoint' });
 }
 
-async function serveStatic(res, pathname) {
+async function serveStatic(req, res, pathname) {
   const target = pathname === '/' ? '/index.html' : pathname;
 
   // PDF.js ships its own files inside node_modules. They are served from one
@@ -763,7 +763,10 @@ async function serveStatic(res, pathname) {
   }
 
   let body;
+  let mtimeHex = '0';
   try {
+    const info = await stat(file);
+    mtimeHex = Math.round(info.mtimeMs).toString(16);
     body = await readFile(file);
   } catch (err) {
     if (err.code === 'ENOENT') return false;
@@ -775,11 +778,34 @@ async function serveStatic(res, pathname) {
     ? 'text/javascript; charset=utf-8'
     : (MIME[extname(file)] || 'application/octet-stream');
 
-  res.writeHead(200, {
+  /*
+    These pages are edited and redeployed often, and the browser cannot tell a
+    new copy from an old one unless it asks. A day-long max-age meant a returning
+    visitor kept running yesterday's reader.html and index.html: the page and the
+    percentage it saves, and the card that shows them, were deployed but never
+    reached the browser that had already cached the files. no-cache keeps the
+    copy, so the common case is still a cheap 304, but it always revalidates
+    first. The pdf.js bundle under /vendor/pdfjs/ is a versioned third-party
+    asset and keeps the long cache.
+  */
+  const isPdfJs = target.startsWith('/vendor/pdfjs/');
+
+  // A redeploy changes the file, so the same ETag must not outlive it: the mtime
+  // is part of the tag. 304 keeps a repeat visit cheap.
+  const etag = '"' + body.length.toString(16) + '-' + mtimeHex + '"';
+  const inm = req.headers['if-none-match'];
+  const head = {
     'Content-Type': type,
-    'Content-Length': body.length,
-    'Cache-Control': 'public, max-age=86400'
-  });
+    'Cache-Control': isPdfJs ? 'public, max-age=86400' : 'no-cache',
+    ETag: etag
+  };
+  if (!isPdfJs && inm && inm.split(',').some((tag) => tag.trim() === etag)) {
+    res.writeHead(304, head);
+    res.end();
+    return true;
+  }
+
+  res.writeHead(200, { ...head, 'Content-Length': body.length });
   res.end(body);
   return true;
 }
@@ -796,7 +822,7 @@ const server = createServer(async (req, res) => {
       res.writeHead(405, { Allow: 'GET, HEAD' }).end();
       return;
     }
-    if (await serveStatic(res, url.pathname)) return;
+    if (await serveStatic(req, res, url.pathname)) return;
     res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
     res.end('Not found');
   } catch (err) {
