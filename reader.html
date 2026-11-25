@@ -864,11 +864,18 @@ function syncIndicators() {
   dom.sliderMax.textContent = String(total);
   dom.zoomLevel.textContent = state.zoom + '%';
 
-  // Rounded exactly the way the server does it (withPercent in server.js), so
-  // the number here and the number on the shelf cannot disagree.
+  // Mirrors withPercent in server.js, so the number here and the number on the
+  // shelf cannot disagree - including the ends: at least 1% once past page one,
+  // and 100% only on the last page.
   if (dom.readPercent) {
-    const percent = total ? Math.min(100, Math.round((state.page / total) * 100)) : 0;
-    dom.readPercent.textContent = total ? percent + '%' : '';
+    let percent = '';
+    if (total) {
+      percent = state.page >= total ? 100
+        : state.page <= 1 ? 0
+        : Math.max(1, Math.floor((state.page / total) * 100));
+      percent += '%';
+    }
+    dom.readPercent.textContent = percent;
   }
 
   // In a spread two pages are on screen; naming the second one avoids showing a
@@ -1275,6 +1282,16 @@ async function boot() {
   await notesPromise;
   syncIndicators();
   await render();
+
+  /*
+    Save once on open, not only when a page turns. A position recorded before the
+    reader knew the page count has no total, and without a total there is no
+    percentage - the shelf then hides the bar rather than guess. Writing here
+    fills in the count from the PDF that is open now, so an old row repairs
+    itself the first time the book is opened. It is also the honest answer to
+    "which book did I open last": this is the one.
+  */
+  scheduleProgressSave();
 }
 
 /* ------------------------------------------------------------------ *
