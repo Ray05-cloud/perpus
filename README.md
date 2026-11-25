@@ -41,10 +41,21 @@ where uploaded PDFs are written (defaults to `storage/pdf/`).
 | `DELETE /api/books/:slug` | Delete book, its PDF, and its bookmarks (409 for the eight seed books) |
 | `GET/POST/DELETE /api/saved` | Visitor bookmarks, scoped by the `perpus_vid` cookie |
 
-Writes (`POST`/`DELETE` on books and PDFs) require the `x-admin-password`
-header to match `ADMIN_PASSWORD`. If `ADMIN_PASSWORD` is unset the server
-refuses every write with `503` rather than allowing them — a public URL must
-never default to open. Reads stay public.
+## Shelves are per visitor
+
+Every visitor gets their own shelf. A book added through `add.html` is listed
+only for the visitor who added it, and only they can delete it or attach a PDF.
+
+Ownership is carried by `books.owner_id`. `NULL` means shared: the eight drawn
+books and anything added before ownership existed stay visible to everyone.
+
+Identity comes from the `perpus_vid` cookie, the same one bookmarks use — there
+are no accounts. Clearing cookies therefore starts a fresh shelf; books from the
+old identity stay in the database but are not listed.
+
+A book owned by someone else answers `404` (not `403`) on every route, so slugs
+do not leak the titles other visitors added. Attaching or removing a PDF on a
+shared book is refused with `403`.
 
 ## Deploy
 

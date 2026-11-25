@@ -6,7 +6,7 @@
 import { createServer } from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
 import { createReadStream } from 'node:fs';
-import { randomUUID, timingSafeEqual } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { extname, join, normalize, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { pool, migrate } from './db/index.js';
@@ -72,39 +72,13 @@ function sendJson(res, status, body) {
 }
 
 /*
-  Writes are admin-only. The shelf is public, so without this anyone who found
-  the URL could add or delete books — proven on the live site before this guard
-  existed.
+  Writes are open to every visitor, but only on their own shelf.
 
-  Fail closed: if ADMIN_PASSWORD is unset the write is refused rather than
-  allowed. An unset secret must never mean "open to everyone".
+  The first attempt at this guard was a single admin password; that was replaced
+  when the shelf became per-visitor. Ownership is now carried by the row
+  (books.owner_id) and checked in getBook, so there is no shared secret to leak
+  and no env var that can silently unlock the site.
 */
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '';
-const ADMIN_HEADER = 'x-admin-password';
-
-function passwordMatches(given) {
-  if (!ADMIN_PASSWORD || typeof given !== 'string' || !given) return false;
-  const a = Buffer.from(given);
-  const b = Buffer.from(ADMIN_PASSWORD);
-  // timingSafeEqual throws on length mismatch, so compare lengths first. The
-  // length itself is not a secret worth protecting here.
-  if (a.length !== b.length) return false;
-  return timingSafeEqual(a, b);
-}
-
-// Returns true when the caller may write. Sends the 401 itself so each route
-// stays a one-liner.
-function denyUnlessAdmin(req, res) {
-  if (!ADMIN_PASSWORD) {
-    sendJson(res, 503, {
-      error: 'This site is read-only until ADMIN_PASSWORD is set on the server.'
-    });
-    return true;
-  }
-  if (passwordMatches(req.headers[ADMIN_HEADER])) return false;
-  sendJson(res, 401, { error: 'An admin password is required for this action.' });
-  return true;
-}
 
 function readBody(req, limit = 8 * 1024) {
   return new Promise((resolve, reject) => {
@@ -178,23 +152,50 @@ const BOOK_COLUMNS = `
 
 // The UI must not offer a delete button for a book the server would refuse, so the
 // permission travels with the record instead of being guessed on the client.
-function withDeletable(book) {
-  return { ...book, deletable: !SEED_SLUGS.has(book.slug) };
+//
+// A shared book (ownerId null) is on everybody's shelf, so it stays deletable the
+// way it always was. A book somebody added belongs to that visitor alone.
+function withDeletable(book, visitor) {
+  const { ownerId, ...rest } = book;
+  const mine = ownerId === null || ownerId === visitor;
+  return {
+    ...rest,
+    owned: ownerId !== null,
+    deletable: !SEED_SLUGS.has(book.slug) && mine
+  };
 }
 
-async function listBooks() {
+// Who may see a book: the shared shelf (owner_id null — the eight drawn books
+// and anything that predates ownership) plus a visitor's own additions.
+const VISIBLE_TO = '(owner_id is null or owner_id = $1)';
+
+async function listBooks(visitor) {
   const { rows } = await pool.query(
-    `select ${BOOK_COLUMNS} from books order by sort_order, id`
+    `select ${BOOK_COLUMNS}, owner_id as "ownerId"
+       from books
+      where ${VISIBLE_TO}
+      order by sort_order, id`,
+    [visitor]
   );
-  return rows.map(withDeletable);
+  return rows.map((book) => withDeletable(book, visitor));
 }
 
-async function getBook(slug) {
+/*
+  Looks a book up as this visitor is allowed to see it.
+
+  A book someone else added is returned as null, exactly like a slug that does
+  not exist. Every route above therefore gets the same answer for "not yours"
+  and "never existed", which is what keeps other visitors' titles private — a
+  403 would confirm the slug is real.
+*/
+async function getBook(slug, visitor) {
   const { rows } = await pool.query(
-    `select ${BOOK_COLUMNS} from books where slug = $1`,
+    `select ${BOOK_COLUMNS}, owner_id as "ownerId" from books where slug = $1`,
     [slug]
   );
-  return rows[0] ? withDeletable(rows[0]) : null;
+  if (!rows[0]) return null;
+  if (rows[0].ownerId !== null && rows[0].ownerId !== visitor) return null;
+  return withDeletable(rows[0], visitor);
 }
 
 async function slugExists(slug) {
@@ -219,7 +220,7 @@ const CATEGORIES = {
   books are — and the PDF is attached afterwards by POST /api/books/:slug/pdf.
   Keeping the two apart means a failed upload does not create a half-book.
 */
-async function createBook(body) {
+async function createBook(body, visitor) {
   const title = typeof body.title === 'string' ? body.title.trim() : '';
   const author = typeof body.author === 'string' ? body.author.trim() : '';
 
@@ -252,10 +253,11 @@ async function createBook(body) {
     `insert into books (
        slug, label, title, author, cat, cat_slug, cover, kicker,
        line1, line2, line3, cover_author, badge, series, pages,
-       blurb, edition, sort_order
+       blurb, edition, sort_order, owner_id
      ) values (
        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,
-       (select coalesce(max(sort_order), -1) + 1 from books)
+       (select coalesce(max(sort_order), -1) + 1 from books),
+       $18
      )
      returning ${BOOK_COLUMNS}`,
     [
@@ -280,7 +282,8 @@ async function createBook(body) {
       series,
       pages,
       blurb,
-      pages ? `Added from a PDF, ${pages} pages.` : 'Added from a PDF.'
+      pages ? `Added from a PDF, ${pages} pages.` : 'Added from a PDF.',
+      visitor
     ]
   );
 
@@ -320,7 +323,7 @@ async function handleApi(req, res, url) {
   }
 
   if (path === '/api/books' && req.method === 'GET') {
-    return sendJson(res, 200, { books: await listBooks() });
+    return sendJson(res, 200, { books: await listBooks(visitor) });
   }
 
   // The generic :slug route must not swallow the sub-resources, so anything with
@@ -329,7 +332,7 @@ async function handleApi(req, res, url) {
   if (path.startsWith('/api/books/') && req.method === 'GET' && !hasSubResource) {
     const slug = decodeURIComponent(path.slice('/api/books/'.length));
     if (!/^[a-z0-9-]{1,64}$/i.test(slug)) return sendJson(res, 400, { error: 'Bad slug' });
-    const book = await getBook(slug);
+    const book = await getBook(slug, visitor);
     if (!book) return sendJson(res, 404, { error: 'No such book' });
     return sendJson(res, 200, { book });
   }
@@ -344,7 +347,7 @@ async function handleApi(req, res, url) {
     const slug = notesMatch[1];
 
     if (req.method === 'GET') {
-      const book = await getBook(slug);
+      const book = await getBook(slug, visitor);
       if (!book) return sendJson(res, 404, { error: 'No such book' });
       const { rows } = await pool.query(
         `select id, page, body, quote, color, kind, rect, created_at as "createdAt"
@@ -357,7 +360,7 @@ async function handleApi(req, res, url) {
     }
 
     if (req.method === 'POST') {
-      const book = await getBook(slug);
+      const book = await getBook(slug, visitor);
       if (!book) return sendJson(res, 404, { error: 'No such book' });
 
       let body;
@@ -440,7 +443,7 @@ async function handleApi(req, res, url) {
     }
 
     if (req.method === 'PUT' || req.method === 'POST') {
-      const book = await getBook(slug);
+      const book = await getBook(slug, visitor);
       if (!book) return sendJson(res, 404, { error: 'No such book' });
 
       let body;
@@ -473,14 +476,13 @@ async function handleApi(req, res, url) {
   }
 
   if (path === '/api/books' && req.method === 'POST') {
-    if (denyUnlessAdmin(req, res)) return;
     let body;
     try {
       body = await readBody(req);
     } catch (err) {
       return sendJson(res, 400, { error: err.message });
     }
-    const result = await createBook(body);
+    const result = await createBook(body, visitor);
     if (result.error) return sendJson(res, 400, { error: result.error });
     return sendJson(res, 201, { book: result.book });
   }
@@ -489,7 +491,6 @@ async function handleApi(req, res, url) {
   // row, the PDF on disk, and any bookmark pointing at the slug. The bookmark of a
   // deleted book would otherwise open a page that no longer exists.
   if (path.startsWith('/api/books/') && req.method === 'DELETE' && !path.endsWith('/pdf')) {
-    if (denyUnlessAdmin(req, res)) return;
     const slug = decodeURIComponent(path.slice('/api/books/'.length));
     if (!/^[a-z0-9-]{1,64}$/i.test(slug)) return sendJson(res, 400, { error: 'Bad slug' });
 
@@ -502,8 +503,17 @@ async function handleApi(req, res, url) {
       });
     }
 
-    const book = await getBook(slug);
+    const book = await getBook(slug, visitor);
     if (!book) return sendJson(res, 404, { error: 'No such book' });
+
+    /*
+      Someone else's book is reported as 404, not 403.
+
+      A 403 would confirm the slug exists, which leaks the titles other visitors
+      added. Deleting outside your own shelf is indistinguishable from deleting
+      something that was never there.
+    */
+    if (!book.deletable) return sendJson(res, 404, { error: 'No such book' });
 
     const removedBookmarks = await pool.query(
       'delete from saved_books where slug = $1 returning id',
@@ -530,10 +540,22 @@ async function handleApi(req, res, url) {
   // failed upload never leaves a half-created record.
   const pdfMatch = path.match(/^\/api\/books\/([a-z0-9-]{1,64})\/pdf$/i);
   if (pdfMatch && req.method === 'POST') {
-    if (denyUnlessAdmin(req, res)) return;
     const slug = pdfMatch[1];
-    const book = await getBook(slug);
+    const book = await getBook(slug, visitor);
     if (!book) return sendJson(res, 404, { error: 'No such book' });
+
+    /*
+      Only the visitor's own additions take a PDF.
+
+      Uploading to a shared book would let anyone replace the file behind it —
+      the shelf's own books and everything added before ownership existed. Those
+      stay read-only; a visitor attaches a PDF to the book they just created.
+    */
+    if (!book.owned) {
+      return sendJson(res, 403, {
+        error: 'A PDF can only be attached to a book you added yourself.'
+      });
+    }
 
     let uploaded;
     try {
@@ -561,7 +583,7 @@ async function handleApi(req, res, url) {
   // The reader needs the bytes, not a JSON description of them.
   if (pdfMatch && req.method === 'GET') {
     const slug = pdfMatch[1];
-    const book = await getBook(slug);
+    const book = await getBook(slug, visitor);
     if (!book) return sendJson(res, 404, { error: 'No such book' });
 
     const file = pdfPath(slug);
@@ -613,10 +635,15 @@ async function handleApi(req, res, url) {
   }
 
   if (pdfMatch && req.method === 'DELETE') {
-    if (denyUnlessAdmin(req, res)) return;
     const slug = pdfMatch[1];
-    const book = await getBook(slug);
+    const book = await getBook(slug, visitor);
     if (!book) return sendJson(res, 404, { error: 'No such book' });
+
+    if (!book.owned) {
+      return sendJson(res, 403, {
+        error: 'A PDF can only be removed from a book you added yourself.'
+      });
+    }
 
     await removePdf(slug);
     const { rows } = await pool.query(

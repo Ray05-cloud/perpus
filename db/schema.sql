@@ -70,6 +70,17 @@ alter table books add column if not exists pdf_name     text;
 alter table books add column if not exists pdf_size     bigint;
 alter table books add column if not exists pdf_added_at timestamptz;
 
+-- Shelf ownership.
+--
+-- Every visitor gets their own shelf: books they add are only listed for them,
+-- and only they can delete them. NULL owner means "shared": the eight drawn
+-- books and anything added before this column existed. Existing rows therefore
+-- stay visible to everyone instead of vanishing from every shelf on deploy.
+alter table books add column if not exists owner_id text;
+
+-- The shelf query filters by owner before sorting, so the index leads with it.
+create index if not exists books_owner_sort_idx on books (owner_id, sort_order, id);
+
 -- Reading state for the PDF reader. One row per visitor per book.
 --
 -- notes and highlights are separate because they behave differently: a note is
