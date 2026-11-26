@@ -57,6 +57,27 @@ A book owned by someone else answers `404` (not `403`) on every route, so slugs
 do not leak the titles other visitors added. Attaching or removing a PDF on a
 shared book is refused with `403`.
 
+## Tests
+
+```bash
+npm test
+```
+
+Two layers, one command:
+
+| Layer | What it covers | Needs a database |
+|---|---|---|
+| `test/slug.test.js`, `progress.test.js`, `validate.test.js` | Pure logic: slugs, progress percentages, request validation | no |
+| `test/api.test.js` | Real HTTP requests against a real Postgres: ownership, bookmarks, progress, notes, status codes | yes |
+
+The API tests run only when `TEST_DATABASE_URL` is set, and skip themselves
+with a reason when it is not. They drop and rebuild every table from
+`db/schema.sql` before each run, so they need their own database — never the one
+the app reads from. `test/helpers/db.js` refuses to start if
+`TEST_DATABASE_URL` names the same database as `DATABASE_URL`.
+
+See `test/README.md` for creating that database on Neon.
+
 ## Deploy
 
 Pushes to `main` deploy automatically to Railway. Persistent uploads need the

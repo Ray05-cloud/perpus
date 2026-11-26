@@ -22,7 +22,9 @@ import { withPercent } from './lib/progress.js';
 import { validateBook } from './lib/validate.js';
 
 const ROOT = fileURLToPath(new URL('.', import.meta.url));
-const PORT = Number(process.env.PORT) || 3000;
+const PORT = process.env.PORT === undefined || process.env.PORT === ''
+  ? 3000
+  : Number(process.env.PORT);
 const COOKIE = 'perpus_vid';
 
 const MIME = {
@@ -809,5 +811,9 @@ const server = createServer(async (req, res) => {
 await migrate();
 await ensureStorage();
 server.listen(PORT, () => {
-  console.log(`PERPUS on http://localhost:${PORT}`);
+  // A test server asks for port 0 and needs the port it actually got.
+  const address = server.address();
+  console.log(`PERPUS on http://localhost:${address && address.port ? address.port : PORT}`);
 });
+
+export { server };
