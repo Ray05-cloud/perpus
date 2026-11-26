@@ -195,6 +195,61 @@ test('deleting a seed book is refused with 409', { skip }, async () => {
   assert.match(res.body.error, /original shelf/i);
 });
 
+/*
+  A shared book has no owner, so it is on every visitor's shelf at once. It used
+  to be deletable by anybody, which meant one visitor could remove it from
+  everyone's shelf and take the PDF, notes and reading positions with it.
+*/
+test('a shared book is not deletable, and says so', { skip }, async () => {
+  await pool.query(
+    `insert into books (slug, label, title, author, cat, cat_slug, cover, sort_order, owner_id)
+     values ('shared-one', 'S', 'Shared One', 'Nobody', 'Classics', 'classic', 'c-plain', 90, null)
+     on conflict (slug) do nothing`
+  );
+
+  const api = client();
+  const list = await api('/api/books');
+  const book = list.body.books.find((b) => b.slug === 'shared-one');
+
+  assert.ok(book, 'shared book missing from the shelf');
+  assert.equal(book.deletable, false);
+
+  const res = await api('/api/books/shared-one', { method: 'DELETE' });
+  assert.equal(res.status, 409);
+
+  const still = await api('/api/books/shared-one');
+  assert.equal(still.status, 200);
+});
+
+test('deleting a shared book leaves other visitors\' notes and progress alone', { skip }, async () => {
+  await pool.query(
+    `insert into books (slug, label, title, author, cat, cat_slug, cover, sort_order, owner_id)
+     values ('shared-two', 'S', 'Shared Two', 'Nobody', 'Classics', 'classic', 'c-plain', 91, null)
+     on conflict (slug) do nothing`
+  );
+
+  const reader = client();
+  const stranger = client();
+  await reader('/api/books');
+
+  await reader('/api/books/shared-two/progress', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ page: 42, totalPages: 100 })
+  });
+  await reader('/api/books/shared-two/notes', json({ body: 'mine to keep', page: 7 }));
+
+  const del = await stranger('/api/books/shared-two', { method: 'DELETE' });
+  assert.equal(del.status, 409);
+
+  const progress = await reader('/api/books/shared-two/progress');
+  assert.equal(progress.body.progress.page, 42);
+
+  const notes = await reader('/api/books/shared-two/notes');
+  assert.equal(notes.body.notes.length, 1);
+  assert.equal(notes.body.notes[0].body, 'mine to keep');
+});
+
 test('deleting another visitor\'s book reports 404, not 403', { skip }, async () => {
   const owner = client();
   const stranger = client();

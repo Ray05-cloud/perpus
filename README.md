@@ -47,7 +47,14 @@ Every visitor gets their own shelf. A book added through `add.html` is listed
 only for the visitor who added it, and only they can delete it or attach a PDF.
 
 Ownership is carried by `books.owner_id`. `NULL` means shared: the eight drawn
-books and anything added before ownership existed stay visible to everyone.
+books and anything added before ownership existed stay visible to everyone, and
+read-only — no visitor can delete a shared book, because it is not only on their
+shelf. Removing it would unlink the PDF and wipe every visitor's notes and
+reading position for it.
+
+Deleting is therefore limited to books you added yourself. The eight drawn books
+answer `409` (they are the shelf's design), and any other shared book answers
+`409` too.
 
 Identity comes from the `perpus_vid` cookie, the same one bookmarks use — there
 are no accounts. Clearing cookies therefore starts a fresh shelf; books from the

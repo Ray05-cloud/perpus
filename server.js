@@ -157,11 +157,13 @@ const BOOK_COLUMNS = `
 // The UI must not offer a delete button for a book the server would refuse, so the
 // permission travels with the record instead of being guessed on the client.
 //
-// A shared book (ownerId null) is on everybody's shelf, so it stays deletable the
-// way it always was. A book somebody added belongs to that visitor alone.
+// Only a book the visitor added themselves can be deleted. A shared book
+// (ownerId null) is on everybody's shelf, so nobody may remove it: one visitor
+// deleting it would take it off every other visitor's shelf too, along with the
+// PDF on disk and every visitor's notes and reading position for it.
 function withDeletable(book, visitor) {
   const { ownerId, ...rest } = book;
-  const mine = ownerId === null || ownerId === visitor;
+  const mine = ownerId !== null && ownerId === visitor;
   return {
     ...rest,
     owned: ownerId !== null,
@@ -535,6 +537,22 @@ async function handleApi(req, res, url) {
 
     const book = await getBook(slug, visitor);
     if (!book) return sendJson(res, 404, { error: 'No such book' });
+
+    /*
+      A shared book cannot be deleted by anyone.
+
+      It has no owner, so it sits on every visitor's shelf at once. Letting one
+      visitor delete it would remove it from everybody else's shelf, unlink the
+      PDF, and wipe every visitor's notes and reading position for it (the
+      cleanup below filters by slug, not by visitor). This answers 409 rather
+      than 404 because the book is not a secret: every visitor can already see
+      it, so there is nothing to hide and the honest message is better.
+    */
+    if (!book.owned) {
+      return sendJson(res, 409, {
+        error: 'This book is on every visitor\'s shelf, so it cannot be deleted.'
+      });
+    }
 
     /*
       Someone else's book is reported as 404, not 403.
