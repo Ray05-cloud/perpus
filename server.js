@@ -18,6 +18,8 @@ import {
   removePdf
 } from './lib/pdf-store.js';
 import { uniqueSlug, coverLines, slugify } from './lib/slug.js';
+import { withPercent } from './lib/progress.js';
+import { validateBook } from './lib/validate.js';
 
 const ROOT = fileURLToPath(new URL('.', import.meta.url));
 const PORT = Number(process.env.PORT) || 3000;
@@ -290,52 +292,11 @@ async function createBook(body, visitor) {
   return { book: { ...rows[0], hasPdf: false } };
 }
 
-function validateBook(body) {
-  const slug = typeof body.slug === 'string' ? body.slug.trim() : '';
-  const title = typeof body.title === 'string' ? body.title.trim() : '';
-  if (!slug || !/^[a-z0-9-]{1,64}$/i.test(slug)) {
-    return { error: 'slug must be 1-64 letters, digits or dashes' };
-  }
-  if (!title || title.length > 300) {
-    return { error: 'title is required and must be under 300 characters' };
-  }
-  const field = (value, max) =>
-    typeof value === 'string' && value.trim() ? value.trim().slice(0, max) : null;
-
-  return {
-    book: {
-      slug,
-      title,
-      author: field(body.author, 200),
-      cat: field(body.cat, 80),
-      cover: field(body.cover, 40),
-      series: field(body.series, 200)
-    }
-  };
-}
-
 /*
   Percent is derived, never stored: page and total are the facts, so a rounded
-  number cannot drift out of sync with them.
-
-  Rounding to whole numbers is what the shelf shows, but plain rounding told a
-  reader six pages into a 2220-page book that they were 0% in - the same number
-  the strip shows before any page is turned. Two rules keep the number honest at
-  the ends: any page past the first reads as at least 1%, and 100% is only
-  reached on the last page, never rounded up to early.
+  number cannot drift out of sync with them. The rule itself lives in
+  lib/progress.js so it can be tested without booting the server.
 */
-function withPercent(row) {
-  const total = Number.isFinite(row.totalPages) && row.totalPages > 0 ? row.totalPages : null;
-  const page = Number.isFinite(row.page) ? row.page : 1;
-  let percent = null;
-  if (total) {
-    percent = page >= total ? 100
-      : page <= 1 ? 0
-      : Math.max(1, Math.floor((page / total) * 100));
-  }
-  return { ...row, percent, finished: Boolean(row.finishedAt) };
-}
-
 async function handleApi(req, res, url) {
   const visitor = visitorId(req, res);
   const path = url.pathname;
